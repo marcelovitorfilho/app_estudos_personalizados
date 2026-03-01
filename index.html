@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planner de Estudos Inteligente</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+    <h1>Planner de Estudos</h1>
+</header>
+
+<main>
+
+<section class="card">
+    <h2>Controle de Desempenho</h2>
+
+    <div class="sub-card">
+        <h3>Registrar Bloco de Questões</h3>
+        <input type="text" id="materia" placeholder="Matéria">
+        <input type="number" id="acertos" placeholder="Acertos">
+        <input type="number" id="erros" placeholder="Erros">
+        <button onclick="registrarBloco()">Registrar</button>
+    </div>
+
+    <div class="sub-card">
+        <h3>Análise por Matéria</h3>
+        <div id="tabelaDesempenho"></div>
+    </div>
+
+    <div class="sub-card">
+        <h3>Diagnóstico Inteligente</h3>
+        <div id="diagnostico"></div>
+    </div>
+</section>
+
+<section class="card">
+    <h2>Metas Inteligentes</h2>
+
+    <button onclick="gerarMetasAutomaticas()">
+        Gerar Metas Automáticas
+    </button>       <button onclick="fecharSemanaAgora()">
+📌 Fechar Semana (Salvar no Histórico)
+</button>
+
+    <div id="progressoMeta"></div>
+
+    <h3>Histórico de Metas</h3>
+    <div id="historicoMetas"></div>
+</section>
+
+<section class="card">
+  <h2>Pomodoro</h2>
+
+  <div id="pomodoro">
+    <div id="timer">40:00</div>
+    <div id="pomodoroStatus">Foco</div>
+
+    <div class="timer-buttons">
+      <button onclick="pomodoroIniciar()">Iniciar</button>
+      <button onclick="pomodoroPausar()">Pausar</button>
+      <button onclick="pomodoroReset()">Reset</button>
+      <button onclick="pomodoroPular()">Pular</button>
+    </div>
+  </div>
+</section>
+
+
+
+<section class="card">
+    <h2>Dashboard Semanal</h2>
+
+    <canvas id="graficoProgresso"></canvas>
+    <br><br>
+    <canvas id="graficoDesempenho"></canvas>
+</section>
+
+<section>
+   <center> <button onclick="resetarSistema()">
+🧹 Resetar Planner
+</button></center>
+</section>
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>

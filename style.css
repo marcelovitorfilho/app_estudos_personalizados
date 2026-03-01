@@ -1,0 +1,471 @@
+body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: linear-gradient(135deg, #1f2937, #111827);
+    color: white;
+}
+
+header {
+    text-align: center;
+    padding: 20px;
+    background: #0f172a;
+    font-size: 24px;
+}
+
+main {
+    max-width: 900px;
+    margin: auto;
+    padding: 20px;
+}
+
+.card {
+    background: #1e293b;
+    padding: 20px;
+    margin-bottom: 25px;
+    border-radius: 10px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.3);
+}
+
+h2 {
+    margin-top: 0;
+}
+
+input {
+    padding: 10px;
+    margin: 5px;
+    border-radius: 6px;
+    border: none;
+}
+
+button {
+    padding: 10px 15px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    background: #3b82f6;
+    color: white;
+    font-weight: bold;
+}
+
+button:hover {
+    background: #2563eb;
+}
+
+.materia-item {
+    background: #334155;
+    padding: 10px;
+    margin: 8px 0;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.prioridade-alta {
+    color: #ef4444;
+    font-weight: bold;
+}
+
+.prioridade-media {
+    color: #facc15;
+}
+
+.prioridade-baixa {
+    color: #22c55e;
+}
+
+.timer {
+    font-size: 40px;
+    text-align: center;
+    margin: 15px 0;
+}
+
+.timer-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.progresso-bar {
+    height: 20px;
+    background: #334155;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 10px;
+}
+
+.progresso {
+    height: 100%;
+    background: #22c55e;
+    width: 0%;
+}
+.sub-card {
+    background: #273549;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th, td {
+    padding: 10px;
+    text-align: center;
+}
+
+th {
+    background: #1e293b;
+}
+
+td {
+    background: #334155;
+}
+
+.recomendacao-alta {
+    color: #ef4444;
+    font-weight: bold;
+}
+
+.recomendacao-media {
+    color: #facc15;
+    font-weight: bold;
+}
+
+.recomendacao-baixa {
+    color: #22c55e;
+    font-weight: bold;
+}
+
+#grade table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+#grade th {
+    background: #1e293b;
+    padding: 10px;
+}
+
+#grade td {
+    background: #334155;
+    padding: 10px;
+    text-align: center;
+}
+
+#grade tr:nth-child(even) td {
+    background: #2b3b52;
+}   
+
+.dia-card {
+    background: #1e293b;
+    margin-bottom: 20px;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 0 12px rgba(0,0,0,0.4);
+}
+
+.dia-card h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 8px;
+}
+
+.evento {
+    display: grid;
+    grid-template-columns: 100px 1fr 80px 100px;
+    gap: 10px;
+    padding: 8px;
+    margin-top: 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    align-items: center;
+}
+
+.estudo {
+    background: #1f3b5c;
+}
+
+.revisao {
+    background: #3b2f5c;
+}
+
+.evento-tipo {
+    font-weight: bold;
+}
+
+.evento-duracao {
+    text-align: center;
+}
+
+.evento-prioridade {
+    text-align: right;
+    font-weight: bold;
+}
+
+.carga-dia {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #334155;
+    font-size: 14px;
+}
+.meta-card {
+    background: #273549;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.historico-card {
+    background: #1e293b;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+canvas {
+    background: #1e293b;
+    padding: 15px;
+    border-radius: 10px;
+}
+
+.performance-card {
+    background: #1f2937;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 18px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    transition: transform 0.2s;
+}
+
+.performance-card:hover {
+    transform: translateY(-3px);
+}
+
+.performance-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.priority-badge {
+    background: #3b82f6;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+.performance-stats {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.performance-stats div {
+    flex: 1;
+}
+
+.performance-stats strong {
+    font-size: 18px;
+    display: block;
+}
+
+.performance-stats small {
+    opacity: 0.7;
+}
+
+.progress-bar-container {
+    background: #374151;
+    height: 8px;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #22c55e, #3b82f6);
+    transition: width 0.4s ease;
+}
+
+.performance-status {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.status-excelente {
+    color: #22c55e;
+}
+
+.status-bom {
+    color: #3b82f6;
+}
+
+.status-critico {
+    color: #ef4444;
+}
+
+/* ================================
+   DIAGNÓSTICO INTELIGENTE
+================================ */
+
+.diagnostico-card {
+    background: #1f2937;
+    padding: 18px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+    transition: transform 0.2s ease;
+}
+
+.diagnostico-card:hover {
+    transform: translateY(-3px);
+}
+
+.diag-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.diag-titulo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.diag-titulo h4 {
+    margin: 0;
+}
+
+.diag-icone {
+    font-size: 18px;
+}
+
+.diag-percentual {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.diag-body p {
+    margin: 5px 0 0 0;
+    opacity: 0.85;
+    font-size: 14px;
+}
+
+/* Cores por nível */
+
+.diag-alta {
+    border-left: 6px solid #ef4444;
+}
+
+.diag-media {
+    border-left: 6px solid #facc15;
+}
+
+.diag-baixa {
+    border-left: 6px solid #22c55e;
+}
+
+/* ================================
+   METAS VISUAL NOVO
+================================ */
+
+.meta-card-novo {
+    background: #1f2937;
+    padding: 18px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+
+.meta-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.meta-header h4 {
+    margin: 0;
+}
+
+.meta-status {
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.meta-numeros {
+    display: flex;
+    justify-content: space-between;
+    margin: 8px 0;
+    font-size: 14px;
+}
+
+.meta-barra {
+    height: 10px;
+    background: #334155;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.meta-preenchimento {
+    height: 100%;
+    background: linear-gradient(90deg, #22c55e, #3b82f6);
+    transition: width 0.4s ease;
+}
+
+/* Status cores */
+
+.meta-atrasado {
+    color: #ef4444;
+}
+
+.meta-ritmo {
+    color: #facc15;
+}
+
+.meta-batida {
+    color: #22c55e;
+}
+.meta-acoes {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+}
+
+.meta-acoes button {
+    flex: 1;
+    padding: 6px;
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.meta-acoes button:hover {
+    opacity: 0.9;
+}
+
+.btn-excluir {
+    background-color: #d9534f;
+    color: white;
+}
+#timer {
+  font-size: 48px;
+  text-align: center;
+  margin: 10px 0;
+  font-weight: bold;
+}
+
+#pomodoroStatus {
+  text-align: center;
+  opacity: 0.85;
+  margin-bottom: 10px;
+}
