@@ -53,6 +53,26 @@
 </section>
 
 <section class="card">
+  <h2>Próximas Revisões Inteligentes</h2>
+  <div id="gradeRevisoesInteligentes"></div>
+</section>
+
+<section class="card">
+  <h2>Histórico de Revisões Inteligentes</h2>
+
+  <div style="margin-bottom: 10px;">
+    <label for="filtroMateriaHistorico"><strong>Filtrar por matéria:</strong></label>
+    <select id="filtroMateriaHistorico" onchange="atualizarFiltroHistorico()">
+      <option value="todas">Todas</option>
+    </select>
+  </div>
+
+  <div id="contadorHistorico" style="margin-bottom: 10px; font-weight: bold;"></div>
+
+  <div id="historicoRevisoesInteligentes"></div>
+</section>
+
+<section class="card">
   <h2>Pomodoro</h2>
 
   <div id="pomodoro">
