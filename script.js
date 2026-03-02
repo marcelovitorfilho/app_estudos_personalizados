@@ -1,20 +1,16 @@
 /* ================================
-   PLANNER - SCRIPT.JS (PRONTO)
-   - Metas persistem após recarregar
-   - Remove chamada de função inexistente atualizarMeta()
-   - Evita duplicidade de marcarConcluido (só 1 função)
-   - Garante metas automáticas para matérias existentes ao carregar
-   - Pomodoro funcional (40/5/15)
-================================ */
-
-/* ================================
    ESTADO GLOBAL
 ================================ */
 
 let agendaRevisoes = [];
+let materiasConcluidas = {};
+let historicoRevisoesInteligentes = {};
 let materias = {};
 let revisoesGeradasPorMateria = {};
 const QUESTOES_POR_REVISAO = 20;
+let revisoesInteligentes = {};
+let historicoExpandido = false;
+let filtroMateriaHistorico = "todas";
 
 let metasPorMateria = {};
 let historicoMetas = {};
@@ -339,18 +335,29 @@ function registrarBloco() {
   salvarDados();
   atualizarDashboard();
   renderizarGrade();
+  gerarESalvarRevisoes(nome);
+renderizarProximasRevisoes();
 }
 
 function excluirMateria(nome) {
+
+  if (!confirm(`Deseja excluir completamente ${nome}?`)) return;
+
   delete materias[nome];
-  // remove meta órfã imediatamente
-  if (metasPorMateria[nome] !== undefined) delete metasPorMateria[nome];
+  delete metasPorMateria[nome];
+  delete revisoesInteligentes[nome];
+  delete revisoesGeradasPorMateria[nome];
+
+  // Remove também da agenda principal
+  agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
 
   salvarDados();
+
   atualizarDesempenho();
   atualizarMetasVisuais();
   atualizarDashboard();
   renderizarGrade();
+  renderizarProximasRevisoes();
 }
 
 function atualizarDesempenho() {
@@ -415,12 +422,299 @@ function atualizarDesempenho() {
         <div class="performance-status ${statusClasse}">${statusTexto}</div>
 
         <br>
-        <button onclick="excluirMateria('${nome}')">Excluir Matéria</button>
+        <button onclick="concluirMateria('${nome}')">Concluir Matéria</button>
+   <button onclick="excluirMateria('${nome}')">Excluir</button>
       </div>
     `;
   }
 
   gerarDiagnostico(listaPrioridades);
+}
+
+/* ================================
+   PRÓXIMAS REVISÕES INTELIGENTES
+================================ */
+/* ================================
+   GERAR E SALVAR REVISÕES
+================================ */
+
+function gerarESalvarRevisoes(nome) {
+
+  if (revisoesInteligentes[nome]) return; // já existe
+
+  const dados = materias[nome];
+  if (!dados) return;
+
+  const total = dados.totalAcertos + dados.totalErros;
+  if (total === 0) return;
+
+  const percentual = (dados.totalAcertos / total) * 100;
+  const prioridade = calcularPrioridade(percentual);
+
+  let min, max;
+
+  if (prioridade === "alta") {
+    min = 3; max = 7;
+  } else if (prioridade === "media") {
+    min = 10; max = 15;
+  } else {
+    min = 30; max = 45;
+  }
+
+  const hoje = new Date();
+
+  const dias1 = Math.floor(Math.random() * (max - min + 1)) + min;
+  const dias2 = Math.floor(Math.random() * (max - min + 1)) + min;
+
+  const data1 = new Date(hoje);
+  data1.setDate(hoje.getDate() + dias1);
+
+  const data2 = new Date(data1);
+  data2.setDate(data1.getDate() + dias2);
+
+  revisoesInteligentes[nome] = [
+  { data: data1.toISOString(), concluida: false },
+  { data: data2.toISOString(), concluida: false }
+];
+
+  salvarDados();
+}
+/* ================================
+   RENDERIZAR ORDENADO
+================================ */
+function renderizarProximasRevisoes() {
+
+  const container = document.getElementById("gradeRevisoesInteligentes");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  let listaOrdenada = [];
+
+  const hoje = new Date();
+  hoje.setHours(0,0,0,0);
+
+  for (let nome in revisoesInteligentes) {
+
+    revisoesInteligentes[nome].forEach((rev, index) => {
+
+      const dataObj = new Date(rev.data);
+      dataObj.setHours(0,0,0,0);
+
+      let status = "futura";
+      if (!rev.concluida) {
+        if (dataObj < hoje) status = "atrasada";
+        else if (dataObj.getTime() === hoje.getTime()) status = "hoje";
+      }
+
+      listaOrdenada.push({
+        materia: nome,
+        data: new Date(rev.data),
+        concluida: rev.concluida,
+        status,
+        index
+      });
+    });
+  }
+
+  listaOrdenada.sort((a, b) => a.data - b.data);
+
+  if (listaOrdenada.length === 0) {
+    container.innerHTML = "<p>Nenhuma revisão gerada ainda.</p>";
+    return;
+  }
+
+  listaOrdenada.forEach(item => {
+
+    container.innerHTML += `
+      <div class="dia-card revisao-${item.status} ${item.concluida ? "rev-feita" : ""}">
+        <h3>${item.materia}</h3>
+        <p>📅 ${item.data.toLocaleDateString("pt-BR")}</p>
+        <button onclick="marcarRevisaoInteligente('${item.materia}', ${item.index})">
+          ${item.concluida ? "✔ Concluída" : "Marcar Concluída"}
+        </button>
+        <button onclick="recalcularRevisoes('${item.materia}')">
+          🔁 Recalcular
+        </button>
+      </div>
+    `;
+  });
+}
+
+function marcarRevisaoInteligente(nome, index) {
+
+  const revisao = revisoesInteligentes[nome]?.[index];
+  if (!revisao) return;
+
+  // Criar estrutura do histórico se não existir
+  if (!historicoRevisoesInteligentes[nome]) {
+    historicoRevisoesInteligentes[nome] = [];
+  }
+
+  // Enviar para histórico
+  historicoRevisoesInteligentes[nome].push({
+    dataOriginal: revisao.data,
+    dataConclusao: new Date().toISOString()
+  });
+
+  // Remover da lista ativa
+  revisoesInteligentes[nome].splice(index, 1);
+
+  // Se não restarem revisões da matéria, remove a chave
+  if (revisoesInteligentes[nome].length === 0) {
+    delete revisoesInteligentes[nome];
+  }
+
+  salvarDados();
+  renderizarProximasRevisoes();
+  renderizarHistoricoRevisoesInteligentes();
+}
+
+function renderizarHistoricoRevisoesInteligentes() {
+
+  const container = document.getElementById("historicoRevisoesInteligentes");
+  const select = document.getElementById("filtroMateriaHistorico");
+
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  let lista = [];
+
+  for (let nome in historicoRevisoesInteligentes) {
+
+    historicoRevisoesInteligentes[nome].forEach((item, index) => {
+
+      lista.push({
+        materia: nome,
+        indexOriginal: index,
+        dataOriginal: new Date(item.dataOriginal),
+        dataConclusao: new Date(item.dataConclusao)
+      });
+
+    });
+  }
+
+  // 🔎 Aplicar filtro
+  if (filtroMateriaHistorico !== "todas") {
+    lista = lista.filter(item => item.materia === filtroMateriaHistorico);
+  }
+
+  // Ordenar mais recente primeiro
+  lista.sort((a, b) => b.dataConclusao - a.dataConclusao);
+
+  const total = lista.length;
+
+  if (total === 0) {
+    container.innerHTML = "<p>Nenhuma revisão encontrada.</p>";
+    return;
+  }
+
+  const limite = historicoExpandido ? total : 2;
+
+  // 🔢 CONTADOR
+  container.innerHTML += `
+    <div style="margin-bottom:8px; font-weight:bold;">
+      Mostrando ${Math.min(limite, total)} de ${total} revisões
+    </div>
+  `;
+
+  lista.slice(0, limite).forEach(item => {
+
+    container.innerHTML += `
+      <div class="historico-card">
+        <h4>${item.materia}</h4>
+        <p>📅 Prevista: ${item.dataOriginal.toLocaleDateString("pt-BR")}</p>
+        <p>✅ Concluída: ${item.dataConclusao.toLocaleDateString("pt-BR")}</p>
+        <button onclick="desconcluirRevisao('${item.materia}', ${item.indexOriginal})">
+          ↩ Desconcluir
+        </button>
+      </div>
+    `;
+  });
+
+  if (total > 2) {
+    container.innerHTML += `
+      <div style="text-align:center; margin-top:10px;">
+        <button onclick="toggleHistorico()">
+          ${historicoExpandido ? "Ver menos ▲" : "Ver mais ▼"}
+        </button>
+      </div>
+    `;
+  }
+
+  atualizarOpcoesFiltroHistorico();
+}
+
+function atualizarOpcoesFiltroHistorico() {
+
+  const select = document.getElementById("filtroMateriaHistorico");
+  if (!select) return;
+
+  const materiasUnicas = Object.keys(historicoRevisoesInteligentes);
+
+  select.innerHTML = `<option value="todas">Todas</option>`;
+
+  materiasUnicas.forEach(nome => {
+    select.innerHTML += `<option value="${nome}">${nome}</option>`;
+  });
+
+  select.value = filtroMateriaHistorico;
+}
+function atualizarFiltroHistorico() {
+  const select = document.getElementById("filtroMateriaHistorico");
+  filtroMateriaHistorico = select.value;
+  historicoExpandido = false;
+  renderizarHistoricoRevisoesInteligentes();
+}
+
+function toggleHistorico() {
+  historicoExpandido = !historicoExpandido;
+  renderizarHistoricoRevisoesInteligentes();
+}
+
+function desconcluirRevisao(nome, index) {
+
+  const item = historicoRevisoesInteligentes[nome]?.[index];
+  if (!item) return;
+
+  // Criar estrutura ativa se não existir
+  if (!revisoesInteligentes[nome]) {
+    revisoesInteligentes[nome] = [];
+  }
+
+  // Retornar revisão para lista ativa
+  revisoesInteligentes[nome].push({
+    data: item.dataOriginal,
+    concluida: false
+  });
+
+  // Remover do histórico
+  historicoRevisoesInteligentes[nome].splice(index, 1);
+
+  if (historicoRevisoesInteligentes[nome].length === 0) {
+    delete historicoRevisoesInteligentes[nome];
+  }
+
+  salvarDados();
+  renderizarProximasRevisoes();
+  renderizarHistoricoRevisoesInteligentes();
+}
+
+function recalcularRevisoes(nome) {
+
+  if (!materias[nome]) return;
+
+  if (!confirm(`Recalcular todas as revisões inteligentes de ${nome}?`)) return;
+
+  // Remove revisões antigas
+  delete revisoesInteligentes[nome];
+
+  // Gera novas revisões baseadas no desempenho atual
+  gerarESalvarRevisoes(nome);
+
+  salvarDados();
+  renderizarProximasRevisoes();
 }
 
 function gerarDiagnostico(lista) {
@@ -795,6 +1089,9 @@ function salvarDados() {
     progressoSemanal,
     agendaRevisoes,
     revisoesGeradasPorMateria,
+    revisoesInteligentes,
+    historicoRevisoesInteligentes, 
+    materiasConcluidas,
     semanaUltimaVista
   }));
 }
@@ -805,11 +1102,32 @@ function carregarDados() {
   const parsed = JSON.parse(dados);
 
   materias = parsed.materias || {};
+  historicoRevisoesInteligentes = parsed.historicoRevisoesInteligentes || {};
   metasPorMateria = parsed.metasPorMateria || {};
   historicoMetas = parsed.historicoMetas || {};
+  materiasConcluidas = parsed.materiasConcluidas || {};
   progressoSemanal = parsed.progressoSemanal || {};
   agendaRevisoes = parsed.agendaRevisoes || [];
   revisoesGeradasPorMateria = parsed.revisoesGeradasPorMateria || {};
+ revisoesInteligentes = {};
+
+const revisoesSalvas = parsed.revisoesInteligentes || {};
+
+for (let nome in revisoesSalvas) {
+  revisoesInteligentes[nome] = revisoesSalvas[nome].map(item => {
+
+    // Se for formato antigo (string)
+    if (typeof item === "string") {
+      return { data: item, concluida: false };
+    }
+
+    // Se já for formato novo
+    return {
+      data: item.data,
+      concluida: item.concluida || false
+    };
+  });
+}
 
   semanaUltimaVista = parsed.semanaUltimaVista ?? obterSemanaAtual();
 
@@ -820,7 +1138,6 @@ function carregarDados() {
   }
 
   limparMetasOrfas();
-  salvarDados();
 }
 
 /* ================================
@@ -944,19 +1261,25 @@ function pomodoroPular() {
    INIT
 ================================ */
 document.addEventListener("DOMContentLoaded", () => {
+
   carregarDados();
 
-  detectarTrocaDeSemanaEFechar(); // ✅ aqui
+  detectarTrocaDeSemanaEFechar();
 
   atualizarDesempenho();
   atualizarMetasVisuais();
   atualizarHistorico();
   atualizarDashboard();
+  renderizarMateriasConcluidas();
+  renderizarHistoricoRevisoesInteligentes();
 
   verificarRevisoesAtrasadas();
+
   renderizarGrade();
+  renderizarProximasRevisoes(); // agora já com revisões persistidas
 
   pomoDefinirEtapa("foco");
+
 });
 
 function resetarSistema() {
@@ -967,4 +1290,49 @@ function resetarSistema() {
   localStorage.removeItem("planner_dados");
 
   location.reload();
+}
+function concluirMateria(nome) {
+
+  if (!materias[nome]) return;
+
+  if (!confirm(`Marcar ${nome} como concluída?`)) return;
+
+  // Salva no histórico de matérias concluídas
+  materiasConcluidas[nome] = {
+    dados: materias[nome],
+    dataConclusao: new Date().toISOString()
+  };
+
+  // Remove da área ativa
+  delete materias[nome];
+  delete metasPorMateria[nome];
+  delete revisoesInteligentes[nome];
+  delete revisoesGeradasPorMateria[nome];
+
+  agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
+
+  salvarDados();
+
+  atualizarDesempenho();
+  atualizarMetasVisuais();
+  atualizarDashboard();
+  renderizarGrade();
+  renderizarProximasRevisoes();
+}
+function renderizarMateriasConcluidas() {
+  const container = document.getElementById("materiasConcluidas");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  for (let nome in materiasConcluidas) {
+    const item = materiasConcluidas[nome];
+
+    container.innerHTML += `
+      <div class="historico-card">
+        <h4>${nome}</h4>
+        <p>Concluída em ${new Date(item.dataConclusao).toLocaleDateString("pt-BR")}</p>
+      </div>
+    `;
+  }
 }
