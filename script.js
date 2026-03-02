@@ -479,6 +479,23 @@ function gerarESalvarRevisoes(nome) {
 
   salvarDados();
 }
+function gerarRevisoesInteligentesAutomaticamente() {
+
+  for (let nome in materias) {
+
+    const dados = materias[nome];
+    const total = (dados.totalAcertos || 0) + (dados.totalErros || 0);
+
+    // Só gera se tiver desempenho
+    if (total === 0) continue;
+
+    // Só gera se ainda não tiver revisões
+    if (!revisoesInteligentes[nome] || revisoesInteligentes[nome].length === 0) {
+      gerarESalvarRevisoes(nome);
+    }
+  }
+
+}
 /* ================================
    RENDERIZAR ORDENADO
 ================================ */
@@ -1266,6 +1283,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   detectarTrocaDeSemanaEFechar();
 
+  gerarRevisoesInteligentesAutomaticamente();
+
   atualizarDesempenho();
   atualizarMetasVisuais();
   atualizarHistorico();
@@ -1276,7 +1295,7 @@ document.addEventListener("DOMContentLoaded", () => {
   verificarRevisoesAtrasadas();
 
   renderizarGrade();
-  renderizarProximasRevisoes(); // agora já com revisões persistidas
+  renderizarProximasRevisoes();
 
   pomoDefinirEtapa("foco");
 
@@ -1336,3 +1355,4 @@ function renderizarMateriasConcluidas() {
     `;
   }
 }
+
