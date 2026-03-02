@@ -440,7 +440,10 @@ function atualizarDesempenho() {
 
 function gerarESalvarRevisoes(nome) {
 
-  if (revisoesInteligentes[nome]) return; // já existe
+  if (
+    revisoesInteligentes[nome] &&
+    revisoesInteligentes[nome].length > 0
+  ) return;
 
   const dados = materias[nome];
   if (!dados) return;
@@ -473,9 +476,9 @@ function gerarESalvarRevisoes(nome) {
   data2.setDate(data1.getDate() + dias2);
 
   revisoesInteligentes[nome] = [
-  { data: data1.toISOString(), concluida: false },
-  { data: data2.toISOString(), concluida: false }
-];
+    { data: data1.toISOString(), concluida: false },
+    { data: data2.toISOString(), concluida: false }
+  ];
 
   salvarDados();
 }
@@ -1355,4 +1358,5 @@ function renderizarMateriasConcluidas() {
     `;
   }
 }
+
 
