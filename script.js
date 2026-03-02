@@ -1,6 +1,3 @@
-/* ================================
-   ESTADO GLOBAL
-================================ */
 
 let agendaRevisoes = [];
 let materiasConcluidas = {};
@@ -15,10 +12,6 @@ let filtroMateriaHistorico = "todas";
 let metasPorMateria = {};
 let historicoMetas = {};
 let progressoSemanal = {};
-
-/* ================================
-   HELPERS
-================================ */
 
 function calcularPrioridade(percentual) {
   if (percentual < 60) return "alta";
@@ -38,10 +31,6 @@ function obterSemanaAtual() {
   const dias = Math.floor((hoje - inicioAno) / (24 * 60 * 60 * 1000));
   return Math.ceil((hoje.getDay() + 1 + dias) / 7);
 }
-
-/* ================================
-   METAS (AUTO + PERSISTÊNCIA)
-================================ */
 
 function metaAutomatica(nome) {
   const dados = materias[nome];
@@ -180,13 +169,6 @@ function editarMeta(nome) {
   atualizarDashboard();
 }
 
-/* ================================
-   HISTÓRICO DE METAS (CORRIGIDO)
-   - Salva semana anterior automaticamente ao detectar troca de semana
-   - Tem botão para fechar manualmente
-================================ */
-
-// guarda qual semana foi a última vista pelo sistema
 let semanaUltimaVista = null;
 
 function obterSnapshotSemana(semana) {
@@ -200,7 +182,6 @@ function obterSnapshotSemana(semana) {
 function salvarHistoricoSemana(semanaParaSalvar) {
   if (!semanaParaSalvar) return;
 
-  // evita sobrescrever histórico já salvo
   if (historicoMetas[semanaParaSalvar]) return;
 
   historicoMetas[semanaParaSalvar] = obterSnapshotSemana(semanaParaSalvar);
@@ -209,21 +190,16 @@ function salvarHistoricoSemana(semanaParaSalvar) {
 function detectarTrocaDeSemanaEFechar() {
   const semanaAtual = obterSemanaAtual();
 
-  // primeira execução após abrir o site
   if (semanaUltimaVista === null) {
     semanaUltimaVista = semanaAtual;
     return;
   }
 
-  // se mudou de semana (ex: abriu na terça e a semana já virou)
   if (semanaAtual !== semanaUltimaVista) {
-    // salva a semana que terminou (semanaUltimaVista)
     salvarHistoricoSemana(semanaUltimaVista);
 
-    // zera progresso da semana nova (semanaAtual), mantendo as metas
     progressoSemanal[semanaAtual] = progressoSemanal[semanaAtual] || {};
 
-    // atualiza marcador
     semanaUltimaVista = semanaAtual;
 
     salvarDados();
@@ -233,17 +209,13 @@ function detectarTrocaDeSemanaEFechar() {
   }
 }
 
-// botão manual
 function fecharSemanaAgora() {
   const semanaAtual = obterSemanaAtual();
 
-  // Salvar a semana atual como histórico (semana que você quer “fechar”)
   if (!confirm(`Salvar a Semana ${semanaAtual} no histórico e zerar o progresso dela?`)) return;
 
-  // salva snapshot da semana atual
   historicoMetas[semanaAtual] = obterSnapshotSemana(semanaAtual);
 
-  // zera progresso da semana atual
   progressoSemanal[semanaAtual] = {};
 
   salvarDados();
@@ -263,8 +235,7 @@ function atualizarHistorico() {
   const semanas = Object.keys(historicoMetas)
     .map(n => parseInt(n, 10))
     .filter(n => !isNaN(n))
-    .sort((a, b) => b - a); // mais recente primeiro
-
+    .sort((a, b) => b - a); 
   if (semanas.length === 0) {
     container.innerHTML = "<p>Nenhum histórico ainda. Clique em “Fechar Semana”.</p>";
     return;
@@ -300,9 +271,6 @@ function atualizarHistorico() {
     container.innerHTML += html;
   });
 }
-/* ================================
-   DESEMPENHO
-================================ */
 
 function registrarBloco() {
   const nome = document.getElementById("materia").value.trim();
@@ -318,7 +286,6 @@ function registrarBloco() {
   materias[nome].totalAcertos += acertos;
   materias[nome].totalErros += erros;
 
-  // ✅ cria meta para a matéria se ainda não existir
   if (metasPorMateria[nome] === undefined) {
     metasPorMateria[nome] = metaAutomatica(nome);
   }
@@ -348,7 +315,6 @@ function excluirMateria(nome) {
   delete revisoesInteligentes[nome];
   delete revisoesGeradasPorMateria[nome];
 
-  // Remove também da agenda principal
   agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
 
   salvarDados();
@@ -431,13 +397,6 @@ function atualizarDesempenho() {
   gerarDiagnostico(listaPrioridades);
 }
 
-/* ================================
-   PRÓXIMAS REVISÕES INTELIGENTES
-================================ */
-/* ================================
-   GERAR E SALVAR REVISÕES
-================================ */
-
 function gerarESalvarRevisoes(nome) {
 
   if (
@@ -489,19 +448,14 @@ function gerarRevisoesInteligentesAutomaticamente() {
     const dados = materias[nome];
     const total = (dados.totalAcertos || 0) + (dados.totalErros || 0);
 
-    // Só gera se tiver desempenho
     if (total === 0) continue;
 
-    // Só gera se ainda não tiver revisões
     if (!revisoesInteligentes[nome] || revisoesInteligentes[nome].length === 0) {
       gerarESalvarRevisoes(nome);
     }
   }
 
 }
-/* ================================
-   RENDERIZAR ORDENADO
-================================ */
 function renderizarProximasRevisoes() {
 
   const container = document.getElementById("gradeRevisoesInteligentes");
@@ -566,21 +520,17 @@ function marcarRevisaoInteligente(nome, index) {
   const revisao = revisoesInteligentes[nome]?.[index];
   if (!revisao) return;
 
-  // Criar estrutura do histórico se não existir
   if (!historicoRevisoesInteligentes[nome]) {
     historicoRevisoesInteligentes[nome] = [];
   }
 
-  // Enviar para histórico
   historicoRevisoesInteligentes[nome].push({
     dataOriginal: revisao.data,
     dataConclusao: new Date().toISOString()
   });
 
-  // Remover da lista ativa
   revisoesInteligentes[nome].splice(index, 1);
 
-  // Se não restarem revisões da matéria, remove a chave
   if (revisoesInteligentes[nome].length === 0) {
     delete revisoesInteligentes[nome];
   }
@@ -615,12 +565,10 @@ function renderizarHistoricoRevisoesInteligentes() {
     });
   }
 
-  // 🔎 Aplicar filtro
   if (filtroMateriaHistorico !== "todas") {
     lista = lista.filter(item => item.materia === filtroMateriaHistorico);
   }
 
-  // Ordenar mais recente primeiro
   lista.sort((a, b) => b.dataConclusao - a.dataConclusao);
 
   const total = lista.length;
@@ -632,7 +580,6 @@ function renderizarHistoricoRevisoesInteligentes() {
 
   const limite = historicoExpandido ? total : 2;
 
-  // 🔢 CONTADOR
   container.innerHTML += `
     <div style="margin-bottom:8px; font-weight:bold;">
       Mostrando ${Math.min(limite, total)} de ${total} revisões
@@ -698,18 +645,14 @@ function desconcluirRevisao(nome, index) {
   const item = historicoRevisoesInteligentes[nome]?.[index];
   if (!item) return;
 
-  // Criar estrutura ativa se não existir
   if (!revisoesInteligentes[nome]) {
     revisoesInteligentes[nome] = [];
   }
-
-  // Retornar revisão para lista ativa
   revisoesInteligentes[nome].push({
     data: item.dataOriginal,
     concluida: false
   });
 
-  // Remover do histórico
   historicoRevisoesInteligentes[nome].splice(index, 1);
 
   if (historicoRevisoesInteligentes[nome].length === 0) {
@@ -727,10 +670,8 @@ function recalcularRevisoes(nome) {
 
   if (!confirm(`Recalcular todas as revisões inteligentes de ${nome}?`)) return;
 
-  // Remove revisões antigas
   delete revisoesInteligentes[nome];
 
-  // Gera novas revisões baseadas no desempenho atual
   gerarESalvarRevisoes(nome);
 
   salvarDados();
@@ -792,9 +733,6 @@ function gerarDiagnostico(lista) {
   });
 }
 
-/* ================================
-   GRADE / AGENDA
-================================ */
 
 function criarRevisaoSeNaoExiste(nome, prioridade, dataObj) {
   const existe = agendaRevisoes.some(ev =>
@@ -860,7 +798,7 @@ function criarAgendaInteligente() {
   const limiteFinal = new Date();
   limiteFinal.setMonth(limiteFinal.getMonth() + 3);
 
-  // mantém apenas eventos futuros
+  
   agendaRevisoes = agendaRevisoes.filter(ev => new Date(ev.data) >= hoje);
 
   for (let nome in materias) {
@@ -985,7 +923,6 @@ function renderizarGrade() {
   });
 }
 
-// ✅ APENAS 1 FUNÇÃO (SEM DUPLICAR)
 function marcarConcluido(id) {
   const evento = agendaRevisoes.find(ev => ev.id === id);
   if (!evento) return;
@@ -1052,9 +989,6 @@ function gerarRevisoesExtrasPorVolume(nome) {
   }
 }
 
-/* ================================
-   DASHBOARD (Chart.js)
-================================ */
 
 let graficoProgresso = null;
 let graficoMeta = null;
@@ -1097,10 +1031,6 @@ function atualizarDashboard() {
   });
 }
 
-/* ================================
-   LOCAL STORAGE
-================================ */
-
 function salvarDados() {
   localStorage.setItem("planner_dados", JSON.stringify({
     materias,
@@ -1136,12 +1066,10 @@ const revisoesSalvas = parsed.revisoesInteligentes || {};
 for (let nome in revisoesSalvas) {
   revisoesInteligentes[nome] = revisoesSalvas[nome].map(item => {
 
-    // Se for formato antigo (string)
     if (typeof item === "string") {
       return { data: item, concluida: false };
     }
 
-    // Se já for formato novo
     return {
       data: item.data,
       concluida: item.concluida || false
@@ -1160,11 +1088,6 @@ for (let nome in revisoesSalvas) {
   limparMetasOrfas();
 }
 
-/* ================================
-   POMODORO
-   (HTML chama: pomodoroIniciar(), pomodoroPausar(), pomodoroReset(), pomodoroPular())
-================================ */
-
 const POMO = {
   focoMin: 40,
   pausaCurtaMin: 5,
@@ -1175,7 +1098,7 @@ const POMO = {
 let pomoIntervalo = null;
 let pomoRodando = false;
 
-let pomoEtapa = "foco"; // "foco" | "curta" | "longa"
+let pomoEtapa = "foco"; 
 let pomoSegundos = POMO.focoMin * 60;
 let pomoCiclosConcluidos = 0;
 
@@ -1277,9 +1200,6 @@ function pomodoroPular() {
   pomoAvancar();
 }
 
-/* ================================
-   INIT
-================================ */
 document.addEventListener("DOMContentLoaded", () => {
 
   carregarDados();
@@ -1319,13 +1239,11 @@ function concluirMateria(nome) {
 
   if (!confirm(`Marcar ${nome} como concluída?`)) return;
 
-  // Salva no histórico de matérias concluídas
   materiasConcluidas[nome] = {
     dados: materias[nome],
     dataConclusao: new Date().toISOString()
   };
 
-  // Remove da área ativa
   delete materias[nome];
   delete metasPorMateria[nome];
   delete revisoesInteligentes[nome];
@@ -1358,5 +1276,6 @@ function renderizarMateriasConcluidas() {
     `;
   }
 }
+
 
 
