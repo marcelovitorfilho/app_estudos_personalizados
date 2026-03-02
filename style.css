@@ -469,3 +469,191 @@ canvas {
   opacity: 0.85;
   margin-bottom: 10px;
 }
+
+.revisao-atrasada {
+  border-left: 5px solid #ff3b3b;
+  background-color: #ffe5e5;
+}
+
+.revisao-hoje {
+  border-left: 5px solid #ffa500;
+  background-color: #fff3d6;
+}
+
+.revisao-futura {
+  border-left: 5px solid #4da6ff;
+  background-color: #e6f2ff;
+}
+
+.rev-feita {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+/* CARD BASE */
+.dia-card {
+  background: #1e1e2f;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 15px;
+  color: #ffffff;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  transition: 0.3s ease;
+}
+
+.dia-card h3 {
+  margin-bottom: 6px;
+  font-size: 18px;
+}
+
+.dia-card p {
+  margin-bottom: 12px;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+/* ATRASADA */
+.revisao-atrasada {
+  border-left: 6px solid #ff4d4f;
+  background: linear-gradient(135deg, #2b0f13, #3a1b21);
+}
+
+/* HOJE */
+.revisao-hoje {
+  border-left: 6px solid #ffa500;
+  background: linear-gradient(135deg, #2d2208, #3c2e0f);
+}
+
+/* FUTURA */
+.revisao-futura {
+  border-left: 6px solid #4dabf7;
+  background: linear-gradient(135deg, #0f1f2d, #162a3a);
+}
+
+/* CONCLUÍDA */
+.rev-feita {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+/* BOTÕES */
+.dia-card button {
+  margin-right: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  transition: 0.2s ease;
+}
+
+.dia-card button:first-of-type {
+  background-color: #2ecc71;
+  color: #fff;
+}
+
+.dia-card button:first-of-type:hover {
+  background-color: #27ae60;
+}
+
+.dia-card button:last-of-type {
+  background-color: #6c757d;
+  color: #fff;
+}
+
+.dia-card button:last-of-type:hover {
+  background-color: #5a6268;
+}
+
+/* ================================
+   HISTÓRICO DE REVISÕES INTELIGENTES
+================================ */
+
+/* Container geral */
+#historicoRevisoesInteligentes {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Card individual */
+.historico-card {
+    background: #ffffff;
+    border-left: 6px solid #4CAF50;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+    transition: all 0.2s ease-in-out;
+}
+
+.historico-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+}
+
+.historico-card h4 {
+    margin: 0 0 8px 0;
+    color: #2c3e50;
+}
+
+.historico-card p {
+    margin: 4px 0;
+    color: #555;
+    font-size: 14px;
+}
+
+/* Botão Desconcluir */
+.historico-card button {
+    margin-top: 8px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    background: #f39c12;
+    color: white;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s ease;
+}
+
+.historico-card button:hover {
+    background: #e67e22;
+}
+
+/* ================================
+   FILTRO
+================================ */
+
+#filtroMateriaHistorico {
+    margin-top: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    background-color: #f8f9fa;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#filtroMateriaHistorico:hover {
+    border-color: #4CAF50;
+    background-color: #ffffff;
+}
+
+#filtroMateriaHistorico:focus {
+    outline: none;
+    border-color: #4CAF50;
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+/* Label do filtro */
+label[for="filtroMateriaHistorico"] {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: #2c3e50;
+}
+
+/* Contador */
+#contadorHistorico {
+    font-size: 14px;
+    color: #555;
+}
