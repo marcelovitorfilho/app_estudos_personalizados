@@ -1,4 +1,3 @@
-
 let agendaRevisoes = [];
 let materiasConcluidas = {};
 let historicoRevisoesInteligentes = {};
@@ -8,10 +7,51 @@ const QUESTOES_POR_REVISAO = 20;
 let revisoesInteligentes = {};
 let historicoExpandido = false;
 let filtroMateriaHistorico = "todas";
-
 let metasPorMateria = {};
 let historicoMetas = {};
 let progressoSemanal = {};
+let semanaUltimaVista = null;
+
+function mostrarPainel(nome, tabEl) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+  const panel = document.getElementById('panel-' + nome);
+  if (panel) panel.classList.add('active');
+
+  if (tabEl) {
+    tabEl.classList.add('active');
+  } else {
+    document.querySelectorAll('.tab').forEach(t => {
+      if (t.getAttribute('onclick')?.includes(nome)) t.classList.add('active');
+    });
+  }
+}
+
+function toast(msg, tipo = 'info') {
+  const icons = { info: 'ℹ️', success: '✅', error: '❌', warning: '⚠️' };
+  const wrap = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `<span>${icons[tipo] || 'ℹ️'}</span><span>${msg}</span>`;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+function atualizarStatsSummary() {
+  let totalAcertos = 0, totalErros = 0;
+  for (let n in materias) {
+    totalAcertos += materias[n].totalAcertos || 0;
+    totalErros   += materias[n].totalErros   || 0;
+  }
+  const total = totalAcertos + totalErros;
+  const media = total > 0 ? ((totalAcertos / total) * 100).toFixed(1) + '%' : '—';
+
+  document.getElementById('statMaterias').textContent = Object.keys(materias).length;
+  document.getElementById('statAcertos').textContent  = totalAcertos;
+  document.getElementById('statErros').textContent    = totalErros;
+  document.getElementById('statMedia').textContent    = media;
+}
 
 function calcularPrioridade(percentual) {
   if (percentual < 60) return "alta";
@@ -22,7 +62,7 @@ function calcularPrioridade(percentual) {
 function limparCampos() {
   document.getElementById("materia").value = "";
   document.getElementById("acertos").value = "";
-  document.getElementById("erros").value = "";
+  document.getElementById("erros").value   = "";
 }
 
 function obterSemanaAtual() {
@@ -35,34 +75,28 @@ function obterSemanaAtual() {
 function metaAutomatica(nome) {
   const dados = materias[nome];
   const totalResolvido = (dados?.totalAcertos || 0) + (dados?.totalErros || 0);
-
   if (totalResolvido === 0) return 10;
-
   const percentual = (dados.totalAcertos / totalResolvido) * 100;
   let metaBase;
-
-  if (percentual < 60) metaBase = Math.ceil(totalResolvido * 0.5);
+  if      (percentual < 60) metaBase = Math.ceil(totalResolvido * 0.5);
   else if (percentual < 80) metaBase = Math.ceil(totalResolvido * 0.35);
-  else metaBase = Math.ceil(totalResolvido * 0.25);
-
-  if (metaBase < 10) metaBase = 10;
-  return metaBase;
+  else                      metaBase = Math.ceil(totalResolvido * 0.25);
+  return Math.max(metaBase, 10);
 }
 
 function gerarMetasAutomaticas() {
   const novas = {};
-
   for (let nome in materias) {
     const dados = materias[nome];
     const total = dados.totalAcertos + dados.totalErros;
     if (total === 0) continue;
     novas[nome] = metaAutomatica(nome);
   }
-
   metasPorMateria = novas;
   atualizarMetasVisuais();
   salvarDados();
   atualizarDashboard();
+  toast('Metas geradas automaticamente!', 'success');
 }
 
 function limparMetasOrfas() {
@@ -73,7 +107,7 @@ function limparMetasOrfas() {
 
 function registrarProgressoSemanal(nome, quantidade) {
   const semana = obterSemanaAtual();
-  if (!progressoSemanal[semana]) progressoSemanal[semana] = {};
+  if (!progressoSemanal[semana])       progressoSemanal[semana] = {};
   if (!progressoSemanal[semana][nome]) progressoSemanal[semana][nome] = 0;
   progressoSemanal[semana][nome] += quantidade;
 }
@@ -82,529 +116,458 @@ function atualizarMetasVisuais() {
   const container = document.getElementById("progressoMeta");
   if (!container) return;
 
-  container.innerHTML = "";
-
   const semana = obterSemanaAtual();
   const progressoAtual = progressoSemanal[semana] || {};
 
   if (Object.keys(metasPorMateria).length === 0) {
-    container.innerHTML = "<p>Nenhuma meta definida.</p>";
+    container.innerHTML = '<div class="empty"><div class="empty-icon">🎯</div><div class="empty-text">Nenhuma meta definida.</div></div>';
     return;
   }
 
-  const listaMetas = Object.keys(metasPorMateria).map(nome => {
-    const meta = metasPorMateria[nome];
+  const lista = Object.keys(metasPorMateria).map(nome => {
+    const meta  = metasPorMateria[nome];
     const feito = progressoAtual[nome] || 0;
-    const percentual = meta > 0 ? (feito / meta) * 100 : 0;
-    return { nome, meta, feito, percentual };
-  });
+    const pct   = meta > 0 ? (feito / meta) * 100 : 0;
+    return { nome, meta, feito, pct };
+  }).sort((a, b) => b.pct - a.pct);
 
-  listaMetas.sort((a, b) => b.percentual - a.percentual);
+  container.innerHTML = lista.map(item => {
+    let statusClasse, statusTexto, fillClass;
+    if      (item.pct < 50)  { statusClasse = 'meta-atrasado'; statusTexto = '⚠ Abaixo';    fillClass = 'fill-red'; }
+    else if (item.pct < 100) { statusClasse = 'meta-ritmo';    statusTexto = '↗ No ritmo';  fillClass = 'fill-yellow'; }
+    else                     { statusClasse = 'meta-batida';   statusTexto = '✔ Concluída'; fillClass = 'fill-green'; }
 
-  listaMetas.forEach(item => {
-    let statusClasse = "";
-    let statusTexto = "";
-
-    if (item.percentual < 50) {
-      statusClasse = "meta-atrasado";
-      statusTexto = "Abaixo do esperado";
-    } else if (item.percentual < 100) {
-      statusClasse = "meta-ritmo";
-      statusTexto = "No ritmo";
-    } else {
-      statusClasse = "meta-batida";
-      statusTexto = "Meta concluída";
-    }
-
-    container.innerHTML += `
-      <div class="meta-card-novo">
+    return `
+      <div class="meta-card">
         <div class="meta-header">
-          <h4>${item.nome}</h4>
+          <span class="meta-name">${item.nome}</span>
           <span class="meta-status ${statusClasse}">${statusTexto}</span>
         </div>
-
-        <div class="meta-numeros">
+        <div class="meta-nums">
           <span>${item.feito} / ${item.meta} questões</span>
-          <span>${item.percentual.toFixed(1)}%</span>
+          <span>${item.pct.toFixed(1)}%</span>
         </div>
-
-        <div class="meta-barra">
-          <div class="meta-preenchimento" style="width:${Math.min(item.percentual, 100)}%"></div>
+        <div class="meta-track">
+          <div class="meta-fill ${fillClass}" style="width:${Math.min(item.pct, 100)}%"></div>
         </div>
-
-        <div class="meta-acoes">
-          <button onclick="editarMeta('${item.nome}')">Alterar Meta</button>
-          <button onclick="excluirMeta('${item.nome}')" class="btn-excluir">Excluir Meta</button>
+        <div class="meta-actions">
+          <button class="btn btn-secondary btn-sm" onclick="editarMeta('${item.nome}')">✏ Editar meta</button>
+          <button class="btn btn-danger btn-sm"    onclick="excluirMeta('${item.nome}')">🗑 Excluir</button>
         </div>
       </div>
     `;
-  });
+  }).join('');
 }
 
 function excluirMeta(nome) {
-  if (!metasPorMateria[nome]) return;
-  if (!confirm(`Deseja realmente excluir a meta de ${nome}?`)) return;
-
+  if (!confirm(`Excluir a meta de ${nome}?`)) return;
   delete metasPorMateria[nome];
-  salvarDados();
-  atualizarMetasVisuais();
-  atualizarDashboard();
+  salvarDados(); atualizarMetasVisuais(); atualizarDashboard();
+  toast(`Meta de "${nome}" excluída.`, 'info');
 }
 
 function editarMeta(nome) {
-  const metaAtual = metasPorMateria[nome];
-  const novaMeta = prompt(`Digite a nova meta semanal para ${nome}:`, metaAtual);
-
-  if (novaMeta === null) return;
-
-  const valor = parseInt(novaMeta, 10);
-  if (isNaN(valor) || valor <= 0) {
-    alert("Digite um número válido.");
-    return;
-  }
-
+  const nova = prompt(`Nova meta semanal para ${nome}:`, metasPorMateria[nome]);
+  if (!nova) return;
+  const valor = parseInt(nova, 10);
+  if (isNaN(valor) || valor <= 0) { toast('Valor inválido.', 'error'); return; }
   metasPorMateria[nome] = valor;
-  salvarDados();
-  atualizarMetasVisuais();
-  atualizarDashboard();
+  salvarDados(); atualizarMetasVisuais(); atualizarDashboard();
+  toast(`Meta de "${nome}" atualizada para ${valor} questões!`, 'success');
 }
-
-let semanaUltimaVista = null;
 
 function obterSnapshotSemana(semana) {
   return {
-    metas: { ...metasPorMateria },
-    progresso: { ...(progressoSemanal[semana] || {}) },
-    dataFechamentoISO: new Date().toISOString()
+    metas:              { ...metasPorMateria },
+    progresso:          { ...(progressoSemanal[semana] || {}) },
+    dataFechamentoISO:  new Date().toISOString()
   };
 }
 
 function salvarHistoricoSemana(semanaParaSalvar) {
-  if (!semanaParaSalvar) return;
-
-  if (historicoMetas[semanaParaSalvar]) return;
-
+  if (!semanaParaSalvar || historicoMetas[semanaParaSalvar]) return;
   historicoMetas[semanaParaSalvar] = obterSnapshotSemana(semanaParaSalvar);
 }
 
 function detectarTrocaDeSemanaEFechar() {
   const semanaAtual = obterSemanaAtual();
-
-  if (semanaUltimaVista === null) {
-    semanaUltimaVista = semanaAtual;
-    return;
-  }
-
+  if (semanaUltimaVista === null) { semanaUltimaVista = semanaAtual; return; }
   if (semanaAtual !== semanaUltimaVista) {
     salvarHistoricoSemana(semanaUltimaVista);
-
     progressoSemanal[semanaAtual] = progressoSemanal[semanaAtual] || {};
-
     semanaUltimaVista = semanaAtual;
-
-    salvarDados();
-    atualizarHistorico();
-    atualizarMetasVisuais();
-    atualizarDashboard();
+    salvarDados(); atualizarHistorico(); atualizarMetasVisuais(); atualizarDashboard();
   }
 }
 
 function fecharSemanaAgora() {
   const semanaAtual = obterSemanaAtual();
-
-  if (!confirm(`Salvar a Semana ${semanaAtual} no histórico e zerar o progresso dela?`)) return;
-
+  if (!confirm(`Salvar a Semana ${semanaAtual} no histórico e zerar o progresso?`)) return;
   historicoMetas[semanaAtual] = obterSnapshotSemana(semanaAtual);
-
   progressoSemanal[semanaAtual] = {};
-
-  salvarDados();
-  atualizarHistorico();
-  atualizarMetasVisuais();
-  atualizarDashboard();
-
-  alert(`Semana ${semanaAtual} salva no histórico ✅`);
+  salvarDados(); atualizarHistorico(); atualizarMetasVisuais(); atualizarDashboard();
+  toast(`Semana ${semanaAtual} salva no histórico!`, 'success');
 }
 
 function atualizarHistorico() {
   const container = document.getElementById("historicoMetas");
   if (!container) return;
 
-  container.innerHTML = "";
-
   const semanas = Object.keys(historicoMetas)
-    .map(n => parseInt(n, 10))
+    .map(n => parseInt(n))
     .filter(n => !isNaN(n))
-    .sort((a, b) => b - a); 
-  if (semanas.length === 0) {
-    container.innerHTML = "<p>Nenhum histórico ainda. Clique em “Fechar Semana”.</p>";
+    .sort((a, b) => b - a);
+
+  if (!semanas.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">📂</div><div class="empty-text">Nenhum histórico ainda.</div></div>';
     return;
   }
 
-  semanas.forEach(semana => {
+  container.innerHTML = semanas.map(semana => {
     const dados = historicoMetas[semana];
-    const metas = dados.metas || {};
-    const prog = dados.progresso || {};
-    const dataFechamento = dados.dataFechamentoISO
+    const metas = dados.metas    || {};
+    const prog  = dados.progresso || {};
+    const data  = dados.dataFechamentoISO
       ? new Date(dados.dataFechamentoISO).toLocaleDateString("pt-BR")
-      : "";
+      : '';
 
-    let html = `
-      <div class="historico-card">
-        <h4>Semana ${semana} ${dataFechamento ? `• Fechada em ${dataFechamento}` : ""}</h4>
+    const rows = Object.keys(metas).map(nome => {
+      const meta = metas[nome] || 0;
+      const feito = prog[nome] || 0;
+      const pct = meta > 0 ? ((feito / meta) * 100).toFixed(1) : '0.0';
+      return `<div class="hist-meta-row"><span>${nome}</span><span>${feito}/${meta} (${pct}%)</span></div>`;
+    }).join('');
+
+    return `
+      <div class="hist-meta-card">
+        <div class="hist-meta-header">Semana ${semana}${data ? ` — fechada em ${data}` : ''}</div>
+        ${rows || '<span style="color:var(--muted);font-size:13px;">Sem metas registradas.</span>'}
+      </div>
     `;
-
-    const materiasSemana = Object.keys(metas);
-
-    if (materiasSemana.length === 0) {
-      html += `<p>Sem metas registradas nesta semana.</p>`;
-    } else {
-      materiasSemana.forEach(nome => {
-        const meta = metas[nome] || 0;
-        const feito = prog[nome] || 0;
-        const percentual = meta > 0 ? ((feito / meta) * 100).toFixed(1) : "0.0";
-        html += `<p><strong>${nome}</strong>: ${feito}/${meta} (${percentual}%)</p>`;
-      });
-    }
-
-    html += `</div>`;
-    container.innerHTML += html;
-  });
+  }).join('');
 }
 
 function registrarBloco() {
-  const nome = document.getElementById("materia").value.trim();
+  const nome    = document.getElementById("materia").value.trim();
   const acertos = parseInt(document.getElementById("acertos").value, 10);
-  const erros = parseInt(document.getElementById("erros").value, 10);
+  const erros   = parseInt(document.getElementById("erros").value, 10);
 
-  if (!nome || isNaN(acertos) || isNaN(erros)) return;
+  if (!nome)                         { toast('Informe o nome da matéria.', 'warning'); return; }
+  if (isNaN(acertos) || isNaN(erros)) { toast('Informe acertos e erros válidos.', 'warning'); return; }
+  if (acertos < 0 || erros < 0)      { toast('Valores não podem ser negativos.', 'warning'); return; }
 
-  if (!materias[nome]) {
-    materias[nome] = { totalAcertos: 0, totalErros: 0 };
-  }
+  if (!materias[nome]) materias[nome] = { totalAcertos: 0, totalErros: 0 };
 
   materias[nome].totalAcertos += acertos;
-  materias[nome].totalErros += erros;
+  materias[nome].totalErros   += erros;
 
-  if (metasPorMateria[nome] === undefined) {
-    metasPorMateria[nome] = metaAutomatica(nome);
-  }
+  if (metasPorMateria[nome] === undefined) metasPorMateria[nome] = metaAutomatica(nome);
 
   gerarRevisoesExtrasPorVolume(nome);
-
-  const totalBloco = acertos + erros;
-  registrarProgressoSemanal(nome, totalBloco);
+  registrarProgressoSemanal(nome, acertos + erros);
 
   atualizarDesempenho();
   atualizarMetasVisuais();
   limparCampos();
-
   salvarDados();
   atualizarDashboard();
   renderizarGrade();
   gerarESalvarRevisoes(nome);
-renderizarProximasRevisoes();
+  renderizarProximasRevisoes();
+  atualizarStatsSummary();
+
+  toast(`"${nome}" registrado com sucesso!`, 'success');
 }
 
 function excluirMateria(nome) {
-
-  if (!confirm(`Deseja excluir completamente ${nome}?`)) return;
+  if (!confirm(`Deseja excluir completamente "${nome}"?`)) return;
 
   delete materias[nome];
   delete metasPorMateria[nome];
   delete revisoesInteligentes[nome];
   delete revisoesGeradasPorMateria[nome];
-
   agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
 
   salvarDados();
-
   atualizarDesempenho();
   atualizarMetasVisuais();
   atualizarDashboard();
   renderizarGrade();
   renderizarProximasRevisoes();
+  atualizarStatsSummary();
+  toast(`"${nome}" excluída.`, 'info');
 }
 
 function atualizarDesempenho() {
-  const container = document.getElementById("tabelaDesempenho");
+  const container  = document.getElementById("tabelaDesempenho");
   const diagnostico = document.getElementById("diagnostico");
   if (!container || !diagnostico) return;
 
-  container.innerHTML = "";
-  diagnostico.innerHTML = "";
+  const nomes = Object.keys(materias);
 
-  if (Object.keys(materias).length === 0) {
-    container.innerHTML = "<p>Nenhuma matéria cadastrada.</p>";
+  if (!nomes.length) {
+    container.innerHTML  = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma matéria registrada ainda.</div></div>';
+    diagnostico.innerHTML = '<div class="empty"><div class="empty-icon">💡</div><div class="empty-text">Registre questões para ver o diagnóstico.</div></div>';
     return;
   }
 
-  const listaPrioridades = [];
-
-  for (let nome in materias) {
+  const lista = nomes.map(nome => {
     const dados = materias[nome];
     const total = dados.totalAcertos + dados.totalErros;
+    const pct   = total > 0 ? (dados.totalAcertos / total * 100) : 0;
+    return { nome, dados, pct, prioridade: calcularPrioridade(pct) };
+  }).sort((a, b) => a.pct - b.pct);
 
-    const percentual = total > 0 ? ((dados.totalAcertos / total) * 100).toFixed(1) : "0.0";
-    const prioridade = calcularPrioridade(parseFloat(percentual));
+  container.innerHTML = lista.map(({ nome, dados, pct, prioridade }) => {
+    let fillClass, statusClasse, statusTexto;
+    if      (pct < 60) { fillClass = 'fill-red';    statusClasse = 'status-critico';   statusTexto = '⚠ Precisa reforçar'; }
+    else if (pct < 80) { fillClass = 'fill-yellow';  statusClasse = 'status-bom';       statusTexto = '↗ Desempenho moderado'; }
+    else               { fillClass = 'fill-green';   statusClasse = 'status-excelente'; statusTexto = '✔ Excelente domínio'; }
 
-    listaPrioridades.push({
-      nome,
-      percentual: parseFloat(percentual),
-      prioridade
-    });
-
-    let statusClasse = "";
-    let statusTexto = "";
-
-    if (parseFloat(percentual) < 60) {
-      statusClasse = "status-critico";
-      statusTexto = "Precisa reforçar";
-    } else if (parseFloat(percentual) < 80) {
-      statusClasse = "status-bom";
-      statusTexto = "Desempenho moderado";
-    } else {
-      statusClasse = "status-excelente";
-      statusTexto = "Excelente domínio";
-    }
-
-    container.innerHTML += `
+    return `
       <div class="performance-card">
         <div class="performance-header">
-          <h3>${nome}</h3>
-          <span class="priority-badge">Prioridade ${prioridade.toUpperCase()}</span>
+          <span class="performance-name">${nome}</span>
+          <span class="badge badge-${prioridade}">Prioridade ${prioridade.toUpperCase()}</span>
         </div>
-
-        <div class="performance-stats">
-          <div><strong>${dados.totalAcertos}</strong><small>Acertos</small></div>
-          <div><strong>${dados.totalErros}</strong><small>Erros</small></div>
-          <div><strong>${percentual}%</strong><small>Aproveitamento</small></div>
+        <div class="perf-stats">
+          <div class="perf-stat stat-green"><strong>${dados.totalAcertos}</strong><small>Acertos</small></div>
+          <div class="perf-stat stat-red"><strong>${dados.totalErros}</strong><small>Erros</small></div>
+          <div class="perf-stat stat-purple"><strong>${pct.toFixed(1)}%</strong><small>Aproveitamento</small></div>
         </div>
-
-        <div class="progress-bar-container">
-          <div class="progress-bar" style="width:${percentual}%"></div>
+        <div class="progress-track">
+          <div class="progress-fill ${fillClass}" style="width:${pct}%"></div>
         </div>
-
-        <div class="performance-status ${statusClasse}">${statusTexto}</div>
-
-        <br>
-        <button onclick="concluirMateria('${nome}')">Concluir Matéria</button>
-   <button onclick="excluirMateria('${nome}')">Excluir</button>
+        <div class="perf-status ${statusClasse}">${statusTexto}</div>
+        <div class="card-actions">
+          <button class="btn btn-success btn-sm" onclick="concluirMateria('${nome}')">✔ Concluir</button>
+          <button class="btn btn-danger btn-sm"  onclick="excluirMateria('${nome}')">🗑 Excluir</button>
+        </div>
       </div>
     `;
+  }).join('');
+
+  gerarDiagnostico(lista);
+  atualizarStatsSummary();
+}
+
+function gerarDiagnostico(lista) {
+  const container = document.getElementById("diagnostico");
+  if (!container || !lista.length) return;
+
+  const configs = {
+    alta:  { classe: 'diag-alta',  icone: '🔴', titulo: 'Desempenho Crítico',   plano: 'Revisar teoria imediatamente + resolver 20 questões diárias focadas em erros.' },
+    media: { classe: 'diag-media', icone: '🟡', titulo: 'Desempenho Moderado',  plano: 'Aumentar volume de questões e revisar os principais erros cometidos.' },
+    baixa: { classe: 'diag-baixa', icone: '🟢', titulo: 'Bom Desempenho',       plano: 'Manter revisões periódicas e simulados para consolidar o domínio.' }
+  };
+
+  container.innerHTML = [...lista].sort((a, b) => a.pct - b.pct).map(({ nome, pct, prioridade }) => {
+    const c = configs[prioridade];
+    return `
+      <div class="diag-card ${c.classe}">
+        <div class="diag-header">
+          <div class="diag-name"><span>${c.icone}</span>${nome}</div>
+          <div class="diag-pct">${pct.toFixed(1)}%</div>
+        </div>
+        <div><strong style="font-size:14px;">${c.titulo}</strong></div>
+        <div class="diag-plan">${c.plano}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function concluirMateria(nome) {
+  if (!materias[nome]) return;
+  if (!confirm(`Marcar "${nome}" como concluída?`)) return;
+
+  materiasConcluidas[nome] = { dados: materias[nome], dataConclusao: new Date().toISOString() };
+  delete materias[nome];
+  delete metasPorMateria[nome];
+  delete revisoesInteligentes[nome];
+  delete revisoesGeradasPorMateria[nome];
+  agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
+
+  salvarDados(); atualizarDesempenho(); atualizarMetasVisuais(); atualizarDashboard();
+  renderizarGrade(); renderizarProximasRevisoes(); renderizarMateriasConcluidas();
+  toast(`"${nome}" concluída! 🎓`, 'success');
+}
+
+function renderizarMateriasConcluidas() {
+  const container = document.getElementById("materiasConcluidas");
+  if (!container) return;
+
+  const nomes = Object.keys(materiasConcluidas);
+  if (!nomes.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">🎓</div><div class="empty-text">Nenhuma matéria concluída ainda.</div></div>';
+    return;
   }
 
-  gerarDiagnostico(listaPrioridades);
+  container.innerHTML = nomes.map(nome => {
+    const item = materiasConcluidas[nome];
+    const data = new Date(item.dataConclusao).toLocaleDateString("pt-BR");
+    return `
+      <div class="concluida-card">
+        <span class="concluida-nome">✅ ${nome}</span>
+        <span class="concluida-data">Concluída em ${data}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 function gerarESalvarRevisoes(nome) {
-
-  if (
-    revisoesInteligentes[nome] &&
-    revisoesInteligentes[nome].length > 0
-  ) return;
-
+  if (revisoesInteligentes[nome]?.length > 0) return;
   const dados = materias[nome];
   if (!dados) return;
-
   const total = dados.totalAcertos + dados.totalErros;
   if (total === 0) return;
 
-  const percentual = (dados.totalAcertos / total) * 100;
-  const prioridade = calcularPrioridade(percentual);
-
-  let min, max;
-
-  if (prioridade === "alta") {
-    min = 3; max = 7;
-  } else if (prioridade === "media") {
-    min = 10; max = 15;
-  } else {
-    min = 30; max = 45;
-  }
+  const pct       = (dados.totalAcertos / total) * 100;
+  const prioridade = calcularPrioridade(pct);
+  const ranges     = { alta: [3, 7], media: [10, 15], baixa: [30, 45] };
+  const [min, max] = ranges[prioridade];
 
   const hoje = new Date();
-
   const dias1 = Math.floor(Math.random() * (max - min + 1)) + min;
   const dias2 = Math.floor(Math.random() * (max - min + 1)) + min;
 
-  const data1 = new Date(hoje);
-  data1.setDate(hoje.getDate() + dias1);
-
-  const data2 = new Date(data1);
-  data2.setDate(data1.getDate() + dias2);
+  const d1 = new Date(hoje); d1.setDate(hoje.getDate() + dias1);
+  const d2 = new Date(d1);   d2.setDate(d1.getDate()   + dias2);
 
   revisoesInteligentes[nome] = [
-    { data: data1.toISOString(), concluida: false },
-    { data: data2.toISOString(), concluida: false }
+    { data: d1.toISOString(), concluida: false },
+    { data: d2.toISOString(), concluida: false }
   ];
-
   salvarDados();
 }
+
 function gerarRevisoesInteligentesAutomaticamente() {
-
   for (let nome in materias) {
-
     const dados = materias[nome];
     const total = (dados.totalAcertos || 0) + (dados.totalErros || 0);
-
     if (total === 0) continue;
-
     if (!revisoesInteligentes[nome] || revisoesInteligentes[nome].length === 0) {
       gerarESalvarRevisoes(nome);
     }
   }
-
 }
-function renderizarProximasRevisoes() {
 
+function renderizarProximasRevisoes() {
   const container = document.getElementById("gradeRevisoesInteligentes");
   if (!container) return;
 
-  container.innerHTML = "";
-
-  let listaOrdenada = [];
-
-  const hoje = new Date();
-  hoje.setHours(0,0,0,0);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  let lista = [];
 
   for (let nome in revisoesInteligentes) {
-
     revisoesInteligentes[nome].forEach((rev, index) => {
-
-      const dataObj = new Date(rev.data);
-      dataObj.setHours(0,0,0,0);
-
-      let status = "futura";
+      const dataObj = new Date(rev.data); dataObj.setHours(0, 0, 0, 0);
+      let status = 'futura';
       if (!rev.concluida) {
-        if (dataObj < hoje) status = "atrasada";
-        else if (dataObj.getTime() === hoje.getTime()) status = "hoje";
+        if      (dataObj < hoje)                              status = 'atrasada';
+        else if (dataObj.getTime() === hoje.getTime()) status = 'hoje';
       }
-
-      listaOrdenada.push({
-        materia: nome,
-        data: new Date(rev.data),
-        concluida: rev.concluida,
-        status,
-        index
-      });
+      lista.push({ materia: nome, data: new Date(rev.data), concluida: rev.concluida, status, index });
     });
   }
 
-  listaOrdenada.sort((a, b) => a.data - b.data);
+  lista.sort((a, b) => a.data - b.data);
 
-  if (listaOrdenada.length === 0) {
-    container.innerHTML = "<p>Nenhuma revisão gerada ainda.</p>";
+  if (!lista.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><div class="empty-text">Nenhuma revisão agendada.</div></div>';
     return;
   }
 
-  listaOrdenada.forEach(item => {
+  const tagLabels = { atrasada: 'Atrasada', hoje: 'Hoje', futura: 'Agendada' };
 
-    container.innerHTML += `
-      <div class="dia-card revisao-${item.status} ${item.concluida ? "rev-feita" : ""}">
-        <h3>${item.materia}</h3>
-        <p>📅 ${item.data.toLocaleDateString("pt-BR")}</p>
-        <button onclick="marcarRevisaoInteligente('${item.materia}', ${item.index})">
-          ${item.concluida ? "✔ Concluída" : "Marcar Concluída"}
-        </button>
-        <button onclick="recalcularRevisoes('${item.materia}')">
-          🔁 Recalcular
-        </button>
+  container.innerHTML = lista.map(item => `
+    <div class="rev-card rev-${item.status} ${item.concluida ? 'rev-feita' : ''}">
+      <div class="rev-info">
+        <div class="rev-name">${item.materia}</div>
+        <div class="rev-date">📅 ${item.data.toLocaleDateString("pt-BR")}</div>
       </div>
-    `;
-  });
+      <span class="rev-tag tag-${item.status}">${tagLabels[item.status]}</span>
+      <div class="rev-btns">
+        <button class="btn btn-success btn-sm" onclick="marcarRevisaoInteligente('${item.materia}', ${item.index})">
+          ${item.concluida ? '✔' : '✔ Concluir'}
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="recalcularRevisoes('${item.materia}')">🔁</button>
+      </div>
+    </div>
+  `).join('');
 }
 
 function marcarRevisaoInteligente(nome, index) {
-
   const revisao = revisoesInteligentes[nome]?.[index];
   if (!revisao) return;
 
-  if (!historicoRevisoesInteligentes[nome]) {
-    historicoRevisoesInteligentes[nome] = [];
-  }
+  if (!historicoRevisoesInteligentes[nome]) historicoRevisoesInteligentes[nome] = [];
 
   historicoRevisoesInteligentes[nome].push({
-    dataOriginal: revisao.data,
+    dataOriginal:  revisao.data,
     dataConclusao: new Date().toISOString()
   });
 
   revisoesInteligentes[nome].splice(index, 1);
-
-  if (revisoesInteligentes[nome].length === 0) {
-    delete revisoesInteligentes[nome];
-  }
+  if (!revisoesInteligentes[nome].length) delete revisoesInteligentes[nome];
 
   salvarDados();
   renderizarProximasRevisoes();
   renderizarHistoricoRevisoesInteligentes();
+  toast('Revisão concluída!', 'success');
 }
 
 function renderizarHistoricoRevisoesInteligentes() {
-
   const container = document.getElementById("historicoRevisoesInteligentes");
-  const select = document.getElementById("filtroMateriaHistorico");
-
   if (!container) return;
 
-  container.innerHTML = "";
-
   let lista = [];
-
   for (let nome in historicoRevisoesInteligentes) {
-
     historicoRevisoesInteligentes[nome].forEach((item, index) => {
-
       lista.push({
-        materia: nome,
+        materia:       nome,
         indexOriginal: index,
-        dataOriginal: new Date(item.dataOriginal),
+        dataOriginal:  new Date(item.dataOriginal),
         dataConclusao: new Date(item.dataConclusao)
       });
-
     });
   }
 
-  if (filtroMateriaHistorico !== "todas") {
-    lista = lista.filter(item => item.materia === filtroMateriaHistorico);
+  if (filtroMateriaHistorico !== 'todas') {
+    lista = lista.filter(i => i.materia === filtroMateriaHistorico);
   }
 
   lista.sort((a, b) => b.dataConclusao - a.dataConclusao);
 
-  const total = lista.length;
-
-  if (total === 0) {
-    container.innerHTML = "<p>Nenhuma revisão encontrada.</p>";
+  if (!lista.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhuma revisão encontrada.</div></div>';
+    atualizarOpcoesFiltroHistorico();
     return;
   }
 
-  const limite = historicoExpandido ? total : 2;
+  const limite = historicoExpandido ? lista.length : 5;
 
-  container.innerHTML += `
-    <div style="margin-bottom:8px; font-weight:bold;">
-      Mostrando ${Math.min(limite, total)} de ${total} revisões
+  container.innerHTML = `
+    <div style="margin-bottom:10px;color:var(--muted);font-size:13px;">
+      Mostrando ${Math.min(limite, lista.length)} de ${lista.length} revisões
     </div>
   `;
 
-  lista.slice(0, limite).forEach(item => {
-
-    container.innerHTML += `
-      <div class="historico-card">
-        <h4>${item.materia}</h4>
-        <p>📅 Prevista: ${item.dataOriginal.toLocaleDateString("pt-BR")}</p>
-        <p>✅ Concluída: ${item.dataConclusao.toLocaleDateString("pt-BR")}</p>
-        <button onclick="desconcluirRevisao('${item.materia}', ${item.indexOriginal})">
-          ↩ Desconcluir
-        </button>
+  container.innerHTML += lista.slice(0, limite).map(item => `
+    <div class="hist-card">
+      <div class="hist-name">${item.materia}</div>
+      <div class="hist-dates">
+        📅 Prevista: ${item.dataOriginal.toLocaleDateString("pt-BR")}<br>
+        ✅ Concluída: ${item.dataConclusao.toLocaleDateString("pt-BR")}
       </div>
-    `;
-  });
+      <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="desconcluirRevisao('${item.materia}', ${item.indexOriginal})">↩ Desconcluir</button>
+    </div>
+  `).join('');
 
-  if (total > 2) {
+  if (lista.length > 5) {
     container.innerHTML += `
-      <div style="text-align:center; margin-top:10px;">
-        <button onclick="toggleHistorico()">
-          ${historicoExpandido ? "Ver menos ▲" : "Ver mais ▼"}
+      <div style="text-align:center;margin-top:12px;">
+        <button class="btn btn-secondary" onclick="toggleHistorico()">
+          ${historicoExpandido ? '▲ Ver menos' : '▼ Ver mais'}
         </button>
       </div>
     `;
@@ -614,23 +577,16 @@ function renderizarHistoricoRevisoesInteligentes() {
 }
 
 function atualizarOpcoesFiltroHistorico() {
-
   const select = document.getElementById("filtroMateriaHistorico");
   if (!select) return;
-
   const materiasUnicas = Object.keys(historicoRevisoesInteligentes);
-
-  select.innerHTML = `<option value="todas">Todas</option>`;
-
-  materiasUnicas.forEach(nome => {
-    select.innerHTML += `<option value="${nome}">${nome}</option>`;
-  });
-
+  select.innerHTML = `<option value="todas">Todas as matérias</option>`;
+  materiasUnicas.forEach(nome => { select.innerHTML += `<option value="${nome}">${nome}</option>`; });
   select.value = filtroMateriaHistorico;
 }
+
 function atualizarFiltroHistorico() {
-  const select = document.getElementById("filtroMateriaHistorico");
-  filtroMateriaHistorico = select.value;
+  filtroMateriaHistorico = document.getElementById("filtroMateriaHistorico").value;
   historicoExpandido = false;
   renderizarHistoricoRevisoesInteligentes();
 }
@@ -641,164 +597,49 @@ function toggleHistorico() {
 }
 
 function desconcluirRevisao(nome, index) {
-
   const item = historicoRevisoesInteligentes[nome]?.[index];
   if (!item) return;
-
-  if (!revisoesInteligentes[nome]) {
-    revisoesInteligentes[nome] = [];
-  }
-  revisoesInteligentes[nome].push({
-    data: item.dataOriginal,
-    concluida: false
-  });
-
+  if (!revisoesInteligentes[nome]) revisoesInteligentes[nome] = [];
+  revisoesInteligentes[nome].push({ data: item.dataOriginal, concluida: false });
   historicoRevisoesInteligentes[nome].splice(index, 1);
-
-  if (historicoRevisoesInteligentes[nome].length === 0) {
-    delete historicoRevisoesInteligentes[nome];
-  }
-
-  salvarDados();
-  renderizarProximasRevisoes();
-  renderizarHistoricoRevisoesInteligentes();
+  if (!historicoRevisoesInteligentes[nome].length) delete historicoRevisoesInteligentes[nome];
+  salvarDados(); renderizarProximasRevisoes(); renderizarHistoricoRevisoesInteligentes();
+  toast('Revisão restaurada.', 'info');
 }
 
 function recalcularRevisoes(nome) {
-
   if (!materias[nome]) return;
-
-  if (!confirm(`Recalcular todas as revisões inteligentes de ${nome}?`)) return;
-
+  if (!confirm(`Recalcular revisões de "${nome}"?`)) return;
   delete revisoesInteligentes[nome];
-
   gerarESalvarRevisoes(nome);
-
-  salvarDados();
-  renderizarProximasRevisoes();
+  salvarDados(); renderizarProximasRevisoes();
+  toast('Revisões recalculadas!', 'success');
 }
-
-function gerarDiagnostico(lista) {
-  const container = document.getElementById("diagnostico");
-  if (!container) return;
-
-  container.innerHTML = "";
-
-  if (!lista || lista.length === 0) {
-    container.innerHTML = "<p>Nenhuma análise disponível.</p>";
-    return;
-  }
-
-  lista.sort((a, b) => a.percentual - b.percentual);
-
-  lista.forEach(item => {
-    let classe = "";
-    let titulo = "";
-    let plano = "";
-    let icone = "";
-
-    if (item.prioridade === "alta") {
-      classe = "diag-alta";
-      titulo = "Desempenho Crítico";
-      plano = "Revisar teoria imediatamente + resolver 20 questões diárias focadas em erros.";
-      icone = "🔴";
-    } else if (item.prioridade === "media") {
-      classe = "diag-media";
-      titulo = "Desempenho Moderado";
-      plano = "Aumentar volume de questões e revisar os principais erros cometidos.";
-      icone = "🟡";
-    } else {
-      classe = "diag-baixa";
-      titulo = "Bom Desempenho";
-      plano = "Manter revisões periódicas e simulados para consolidar domínio.";
-      icone = "🟢";
-    }
-
-    container.innerHTML += `
-      <div class="diagnostico-card ${classe}">
-        <div class="diag-header">
-          <div class="diag-titulo">
-            <span class="diag-icone">${icone}</span>
-            <h4>${item.nome}</h4>
-          </div>
-          <span class="diag-percentual">${item.percentual}%</span>
-        </div>
-
-        <div class="diag-body">
-          <strong>${titulo}</strong>
-          <p>${plano}</p>
-        </div>
-      </div>
-    `;
-  });
-}
-
 
 function criarRevisaoSeNaoExiste(nome, prioridade, dataObj) {
   const existe = agendaRevisoes.some(ev =>
     ev.materia === nome &&
-    ev.tipo === "Revisão" &&
+    ev.tipo    === "Revisão" &&
     new Date(ev.data).toDateString() === dataObj.toDateString()
   );
   if (existe) return false;
-
   agendaRevisoes.push({
-    id: crypto.randomUUID(),
-    data: dataObj.toISOString(),
-    tipo: "Revisão",
-    materia: nome,
-    duracao: 30,
+    id:            crypto.randomUUID(),
+    data:          dataObj.toISOString(),
+    tipo:          "Revisão",
+    materia:       nome,
+    duracao:       30,
     prioridade,
-    concluido: false,
+    concluido:     false,
     reagendamentos: 0
   });
-
   return true;
 }
 
-function gerarDatasRevisaoBase(prioridade) {
-  if (prioridade === "alta") return [3, 7];
-  if (prioridade === "media") return [7, 14];
-  return [14, 30];
-}
-
-function gerar2RevisoesIniciaisPorMateria() {
-  const hoje = new Date();
-  const limiteFinal = new Date();
-  limiteFinal.setMonth(limiteFinal.getMonth() + 3);
-
-  for (let nome in materias) {
-    const dados = materias[nome];
-    const total = dados.totalAcertos + dados.totalErros;
-    if (total === 0) continue;
-
-    const percentual = (dados.totalAcertos / total) * 100;
-    const prioridade = calcularPrioridade(percentual);
-
-    if (!revisoesGeradasPorMateria[nome]) revisoesGeradasPorMateria[nome] = 0;
-
-    const baseOffsets = gerarDatasRevisaoBase(prioridade);
-
-    for (let i = 0; i < baseOffsets.length; i++) {
-      if (revisoesGeradasPorMateria[nome] >= 2) break;
-
-      const d = new Date(hoje);
-      d.setDate(d.getDate() + baseOffsets[i]);
-
-      if (d > limiteFinal) continue;
-
-      const criada = criarRevisaoSeNaoExiste(nome, prioridade, d);
-      if (criada) revisoesGeradasPorMateria[nome] += 1;
-    }
-  }
-}
-
 function criarAgendaInteligente() {
-  const hoje = new Date();
-  const limiteFinal = new Date();
-  limiteFinal.setMonth(limiteFinal.getMonth() + 3);
+  const hoje       = new Date();
+  const limiteFinal = new Date(); limiteFinal.setMonth(limiteFinal.getMonth() + 3);
 
-  
   agendaRevisoes = agendaRevisoes.filter(ev => new Date(ev.data) >= hoje);
 
   for (let nome in materias) {
@@ -806,328 +647,181 @@ function criarAgendaInteligente() {
     const total = dados.totalAcertos + dados.totalErros;
     if (total === 0) continue;
 
-    const percentual = (dados.totalAcertos / total) * 100;
-    const prioridade = calcularPrioridade(percentual);
+    const pct          = (dados.totalAcertos / total) * 100;
+    const prioridade   = calcularPrioridade(pct);
     const duracaoEstudo = prioridade === "alta" ? 60 : 40;
 
     const jaExiste = agendaRevisoes.some(ev =>
-      ev.tipo === "Estudo" &&
+      ev.tipo    === "Estudo" &&
       ev.materia === nome &&
       new Date(ev.data).toDateString() === hoje.toDateString()
     );
 
     if (!jaExiste) {
       agendaRevisoes.push({
-        id: crypto.randomUUID(),
-        data: hoje.toISOString(),
-        tipo: "Estudo",
-        materia: nome,
-        duracao: duracaoEstudo,
+        id:            crypto.randomUUID(),
+        data:          hoje.toISOString(),
+        tipo:          "Estudo",
+        materia:       nome,
+        duracao:       duracaoEstudo,
         prioridade,
-        concluido: false,
+        concluido:     false,
         reagendamentos: 0
       });
     }
 
     let dataRevisao = new Date(hoje);
-
     while (dataRevisao < limiteFinal) {
-      let intervalo;
-      if (prioridade === "alta") intervalo = 3 + Math.floor(Math.random() * 5);
-      else if (prioridade === "media") intervalo = 10 + Math.floor(Math.random() * 6);
-      else intervalo = 30 + Math.floor(Math.random() * 16);
+      const intervalo = prioridade === "alta"  ? 3  + Math.floor(Math.random() * 5)
+                      : prioridade === "media" ? 10 + Math.floor(Math.random() * 6)
+                      :                         30 + Math.floor(Math.random() * 16);
 
       dataRevisao = new Date(dataRevisao);
       dataRevisao.setDate(dataRevisao.getDate() + intervalo);
-
       if (dataRevisao > limiteFinal) break;
 
-      const existe = agendaRevisoes.some(ev =>
-        ev.materia === nome &&
-        ev.tipo === "Revisão" &&
-        new Date(ev.data).toDateString() === dataRevisao.toDateString()
-      );
-
-      if (!existe) {
-        agendaRevisoes.push({
-          id: crypto.randomUUID(),
-          data: dataRevisao.toISOString(),
-          tipo: "Revisão",
-          materia: nome,
-          duracao: 30,
-          prioridade,
-          concluido: false,
-          reagendamentos: 0
-        });
-      }
+      criarRevisaoSeNaoExiste(nome, prioridade, dataRevisao);
     }
   }
 
-  gerar2RevisoesIniciaisPorMateria();
-  salvarDados();
-  renderizarGrade();
-}
-
-function verificarRevisoesAtrasadas() {
-  const hoje = new Date();
-
-  agendaRevisoes = agendaRevisoes.map(evento => {
-    if (!evento.concluido) {
-      const dataEvento = new Date(evento.data);
-      if (dataEvento < hoje) {
-        const novaData = new Date(hoje);
-        novaData.setDate(novaData.getDate() + 3);
-        evento.data = novaData.toISOString();
-        evento.reagendamentos = (evento.reagendamentos || 0) + 1;
-      }
-    }
-    return evento;
-  });
-
-  salvarDados();
+  salvarDados(); renderizarGrade();
+  toast('Agenda gerada com sucesso!', 'success');
 }
 
 function renderizarGrade() {
   const grade = document.getElementById("grade");
   if (!grade) return;
 
-  grade.innerHTML = "";
+  if (!agendaRevisoes.length) {
+    grade.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><div class="empty-text">Gere a agenda para ver os eventos.</div></div>';
+    return;
+  }
 
   const agenda = {};
   agendaRevisoes.forEach(ev => {
-    const dataKey = new Date(ev.data).toISOString().split("T")[0];
-    if (!agenda[dataKey]) agenda[dataKey] = { carga: 0, eventos: [] };
-    agenda[dataKey].eventos.push(ev);
-    agenda[dataKey].carga += ev.duracao;
+    const key = new Date(ev.data).toISOString().split("T")[0];
+    if (!agenda[key]) agenda[key] = { carga: 0, eventos: [] };
+    agenda[key].eventos.push(ev);
+    agenda[key].carga += ev.duracao;
   });
 
-  const datasOrdenadas = Object.keys(agenda).sort();
-  datasOrdenadas.forEach(data => {
-    const dataObj = new Date(data);
-    const dataFormatada = dataObj.toLocaleDateString("pt-BR");
-
-    grade.innerHTML += `<div class="dia-card"><h3>${dataFormatada}</h3>`;
-
-    agenda[data].eventos.forEach(ev => {
-      grade.innerHTML += `
-        <div class="evento ${ev.tipo === "Estudo" ? "estudo" : "revisao"} ${ev.concluido ? "feito" : ""}">
-          <span>${ev.tipo}</span>
-          <span>${ev.materia}</span>
-          <span>${ev.duracao} min</span>
-          <button onclick="marcarConcluido('${ev.id}')">${ev.concluido ? "✔" : "Marcar"}</button>
-        </div>
-      `;
+  grade.innerHTML = Object.keys(agenda).sort().map(data => {
+    const dataFormatada = new Date(data).toLocaleDateString("pt-BR", {
+      weekday: 'long', day: '2-digit', month: 'long'
     });
 
-    grade.innerHTML += `<div class="carga-dia">Carga total: ${agenda[data].carga} min</div></div>`;
-  });
+    const eventos = agenda[data].eventos.map(ev => `
+      <div class="evento evento-${ev.tipo === 'Estudo' ? 'estudo' : 'revisao'} ${ev.concluido ? 'feito' : ''}">
+        <span style="font-weight:600;">${ev.tipo}</span>
+        <span>${ev.materia}</span>
+        <span>${ev.duracao} min</span>
+        <button class="btn btn-sm ${ev.concluido ? 'btn-secondary' : 'btn-primary'}" onclick="marcarConcluido('${ev.id}')">
+          ${ev.concluido ? '✔ Feito' : 'Marcar'}
+        </button>
+      </div>
+    `).join('');
+
+    return `
+      <div class="dia-card">
+        <div class="dia-header">${dataFormatada}</div>
+        ${eventos}
+        <div class="carga-total">⏱ Carga total: ${agenda[data].carga} min</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function marcarConcluido(id) {
-  const evento = agendaRevisoes.find(ev => ev.id === id);
-  if (!evento) return;
-
-  evento.concluido = !evento.concluido;
-  salvarDados();
-  renderizarGrade();
+  const ev = agendaRevisoes.find(e => e.id === id);
+  if (!ev) return;
+  ev.concluido = !ev.concluido;
+  salvarDados(); renderizarGrade();
 }
 
 function gerarRevisoesExtrasPorVolume(nome) {
-  const hoje = new Date();
-  const limiteFinal = new Date();
-  limiteFinal.setMonth(limiteFinal.getMonth() + 3);
-
+  const limiteFinal = new Date(); limiteFinal.setMonth(limiteFinal.getMonth() + 3);
   const dados = materias[nome];
   const total = dados.totalAcertos + dados.totalErros;
   if (total === 0) return;
 
-  const percentual = (dados.totalAcertos / total) * 100;
-  const prioridade = calcularPrioridade(percentual);
-
+  const pct              = (dados.totalAcertos / total) * 100;
+  const prioridade       = calcularPrioridade(pct);
   const revisoesDesejadas = Math.floor(total / QUESTOES_POR_REVISAO);
-  const jaGeradas = revisoesGeradasPorMateria[nome] || 0;
-  const faltam = revisoesDesejadas - jaGeradas;
-
+  const jaGeradas        = revisoesGeradasPorMateria[nome] || 0;
+  const faltam           = revisoesDesejadas - jaGeradas;
   if (faltam <= 0) return;
 
-  for (let k = 0; k < faltam; k++) {
-    let salto;
-    if (prioridade === "alta") salto = 5;
-    else if (prioridade === "media") salto = 10;
-    else salto = 15;
+  const saltos = { alta: 5, media: 10, baixa: 15 };
+  const salto  = saltos[prioridade];
+  const hoje   = new Date();
 
-    const revisoesDaMateria = agendaRevisoes
+  for (let k = 0; k < faltam; k++) {
+    const revs = agendaRevisoes
       .filter(ev => ev.tipo === "Revisão" && ev.materia === nome)
       .map(ev => new Date(ev.data))
       .sort((a, b) => a - b);
 
-    let base = revisoesDaMateria.length ? revisoesDaMateria[revisoesDaMateria.length - 1] : hoje;
-
+    let base      = revs.length ? revs[revs.length - 1] : hoje;
     let tentativa = new Date(base);
-    let criada = false;
+    let criada    = false;
 
-    for (let tent = 0; tent < 30; tent++) {
+    for (let t = 0; t < 30; t++) {
       tentativa = new Date(tentativa);
       tentativa.setDate(tentativa.getDate() + salto);
-
       if (tentativa > limiteFinal) break;
-
-      if (criarRevisaoSeNaoExiste(nome, prioridade, tentativa)) {
-        criada = true;
-        break;
-      } else {
-        tentativa = new Date(tentativa);
-        tentativa.setDate(tentativa.getDate() + 1);
-      }
+      if (criarRevisaoSeNaoExiste(nome, prioridade, tentativa)) { criada = true; break; }
+      tentativa.setDate(tentativa.getDate() + 1);
     }
 
-    if (criada) {
-      revisoesGeradasPorMateria[nome] = (revisoesGeradasPorMateria[nome] || 0) + 1;
-    } else {
-      break;
-    }
+    if (criada) revisoesGeradasPorMateria[nome] = (revisoesGeradasPorMateria[nome] || 0) + 1;
+    else break;
   }
 }
 
+const POMO = { focoMin: 40, pausaCurtaMin: 5, pausaLongaMin: 15, ciclosParaPausaLonga: 4 };
 
-let graficoProgresso = null;
-let graficoMeta = null;
-
-function atualizarDashboard() {
-  const semana = obterSemanaAtual();
-  const progressoAtual = progressoSemanal[semana] || {};
-
-  const labels = [];
-  const dadosFeitos = [];
-  const dadosPercentual = [];
-
-  for (let nome in metasPorMateria) {
-    labels.push(nome);
-
-    const meta = metasPorMateria[nome] || 0;
-    const feito = progressoAtual[nome] || 0;
-
-    dadosFeitos.push(feito);
-    dadosPercentual.push(meta > 0 ? ((feito / meta) * 100).toFixed(1) : 0);
-  }
-
-  const ctx1 = document.getElementById("graficoProgresso");
-  const ctx2 = document.getElementById("graficoDesempenho");
-  if (!ctx1 || !ctx2) return;
-
-  if (graficoProgresso) graficoProgresso.destroy();
-  if (graficoMeta) graficoMeta.destroy();
-
-  graficoProgresso = new Chart(ctx1, {
-    type: "bar",
-    data: { labels, datasets: [{ label: "Questões Resolvidas", data: dadosFeitos }] },
-    options: { responsive: true, animation: false }
-  });
-
-  graficoMeta = new Chart(ctx2, {
-    type: "bar",
-    data: { labels, datasets: [{ label: "% da Meta", data: dadosPercentual }] },
-    options: { responsive: true, animation: false }
-  });
-}
-
-function salvarDados() {
-  localStorage.setItem("planner_dados", JSON.stringify({
-    materias,
-    metasPorMateria,
-    historicoMetas,
-    progressoSemanal,
-    agendaRevisoes,
-    revisoesGeradasPorMateria,
-    revisoesInteligentes,
-    historicoRevisoesInteligentes, 
-    materiasConcluidas,
-    semanaUltimaVista
-  }));
-}
-function carregarDados() {
-  const dados = localStorage.getItem("planner_dados");
-  if (!dados) return;
-
-  const parsed = JSON.parse(dados);
-
-  materias = parsed.materias || {};
-  historicoRevisoesInteligentes = parsed.historicoRevisoesInteligentes || {};
-  metasPorMateria = parsed.metasPorMateria || {};
-  historicoMetas = parsed.historicoMetas || {};
-  materiasConcluidas = parsed.materiasConcluidas || {};
-  progressoSemanal = parsed.progressoSemanal || {};
-  agendaRevisoes = parsed.agendaRevisoes || [];
-  revisoesGeradasPorMateria = parsed.revisoesGeradasPorMateria || {};
- revisoesInteligentes = {};
-
-const revisoesSalvas = parsed.revisoesInteligentes || {};
-
-for (let nome in revisoesSalvas) {
-  revisoesInteligentes[nome] = revisoesSalvas[nome].map(item => {
-
-    if (typeof item === "string") {
-      return { data: item, concluida: false };
-    }
-
-    return {
-      data: item.data,
-      concluida: item.concluida || false
-    };
-  });
-}
-
-  semanaUltimaVista = parsed.semanaUltimaVista ?? obterSemanaAtual();
-
-  for (let nome in materias) {
-    if (metasPorMateria[nome] === undefined) {
-      metasPorMateria[nome] = metaAutomatica(nome);
-    }
-  }
-
-  limparMetasOrfas();
-}
-
-const POMO = {
-  focoMin: 40,
-  pausaCurtaMin: 5,
-  pausaLongaMin: 15,
-  ciclosParaPausaLonga: 4
-};
-
-let pomoIntervalo = null;
-let pomoRodando = false;
-
-let pomoEtapa = "foco"; 
-let pomoSegundos = POMO.focoMin * 60;
+let pomoIntervalo       = null;
+let pomoRodando         = false;
+let pomoEtapa           = "foco";
+let pomoSegundos        = POMO.focoMin * 60;
 let pomoCiclosConcluidos = 0;
 
+function aplicarConfigPomo() {
+  POMO.focoMin       = parseInt(document.getElementById('cfgFoco').value)  || 40;
+  POMO.pausaCurtaMin = parseInt(document.getElementById('cfgCurta').value) || 5;
+  POMO.pausaLongaMin = parseInt(document.getElementById('cfgLonga').value) || 15;
+  if (!pomoRodando) pomoDefinirEtapa(pomoEtapa);
+}
+
 function pomoFormatar(seg) {
-  const m = String(Math.floor(seg / 60)).padStart(2, "0");
-  const s = String(seg % 60).padStart(2, "0");
-  return `${m}:${s}`;
+  return `${String(Math.floor(seg / 60)).padStart(2, '0')}:${String(seg % 60).padStart(2, '0')}`;
+}
+
+function pomoCiclosUI() {
+  const txt  = document.getElementById('pomoCiclosTexto');
+  const dots = document.getElementById('pomoDots');
+  if (txt)  txt.textContent = `Ciclo ${(pomoCiclosConcluidos % POMO.ciclosParaPausaLonga) + 1} de ${POMO.ciclosParaPausaLonga}`;
+  if (dots) {
+    const atual = pomoCiclosConcluidos % POMO.ciclosParaPausaLonga;
+    dots.querySelectorAll('.pomo-dot').forEach((d, i) => {
+      d.classList.toggle('ativo', i <= atual && pomoEtapa === 'foco');
+    });
+  }
 }
 
 function pomoUI() {
   const el = document.getElementById("timer");
-  if (el) el.innerText = pomoFormatar(pomoSegundos);
-
+  if (el) el.textContent = pomoFormatar(pomoSegundos);
   const st = document.getElementById("pomodoroStatus");
-  if (st) {
-    st.innerText =
-      pomoEtapa === "foco" ? "Foco" :
-      pomoEtapa === "curta" ? "Pausa curta" :
-      "Pausa longa";
-  }
+  if (st) st.textContent = pomoEtapa === 'foco' ? 'FOCO' : pomoEtapa === 'curta' ? 'PAUSA CURTA' : 'PAUSA LONGA';
+  pomoCiclosUI();
 }
 
 function pomoDefinirEtapa(etapa) {
   pomoEtapa = etapa;
-
-  if (etapa === "foco") pomoSegundos = POMO.focoMin * 60;
+  if (etapa === "foco")  pomoSegundos = POMO.focoMin       * 60;
   if (etapa === "curta") pomoSegundos = POMO.pausaCurtaMin * 60;
   if (etapa === "longa") pomoSegundos = POMO.pausaLongaMin * 60;
-
   pomoUI();
 }
 
@@ -1140,142 +834,189 @@ function pomoBeep() {
     o.frequency.value = 880;
     g.gain.value = 0.05;
     o.start();
-    setTimeout(() => { o.stop(); ctx.close(); }, 180);
+    setTimeout(() => { o.stop(); ctx.close(); }, 200);
   } catch (e) {}
 }
 
 function pomoAvancar() {
   pomoBeep();
-
   if (pomoEtapa === "foco") {
     pomoCiclosConcluidos++;
-
-    if (pomoCiclosConcluidos % POMO.ciclosParaPausaLonga === 0) {
-      pomoDefinirEtapa("longa");
-    } else {
-      pomoDefinirEtapa("curta");
-    }
+    pomoDefinirEtapa(pomoCiclosConcluidos % POMO.ciclosParaPausaLonga === 0 ? "longa" : "curta");
+    toast('Foco concluído! Hora de descansar.', 'success');
   } else {
     pomoDefinirEtapa("foco");
-  }
-}
-
-function pomoTick() {
-  if (!pomoRodando) return;
-
-  pomoSegundos--;
-
-  if (pomoSegundos <= 0) {
-    pomoAvancar();
-  } else {
-    pomoUI();
+    toast('Pausa encerrada. Vamos focar!', 'info');
   }
 }
 
 function pomodoroIniciar() {
   if (pomoRodando) return;
-
   pomoRodando = true;
   if (pomoIntervalo) clearInterval(pomoIntervalo);
-  pomoIntervalo = setInterval(pomoTick, 1000);
-
+  pomoIntervalo = setInterval(() => {
+    if (!pomoRodando) return;
+    pomoSegundos--;
+    if (pomoSegundos <= 0) pomoAvancar();
+    else pomoUI();
+  }, 1000);
   pomoUI();
 }
 
-function pomodoroPausar() {
-  pomoRodando = false;
-}
+function pomodoroPausar() { pomoRodando = false; toast('Pausado.', 'info'); }
 
 function pomodoroReset() {
   pomoRodando = false;
-
   if (pomoIntervalo) clearInterval(pomoIntervalo);
   pomoIntervalo = null;
-
   pomoCiclosConcluidos = 0;
   pomoDefinirEtapa("foco");
 }
 
-function pomodoroPular() {
-  pomoAvancar();
+function pomodoroPular() { pomoAvancar(); }
+
+let graficoProgresso = null;
+let graficoMeta      = null;
+
+function atualizarDashboard() {
+  const semana        = obterSemanaAtual();
+  const progressoAtual = progressoSemanal[semana] || {};
+  const labels         = [];
+  const dadosFeitos    = [];
+  const dadosPercentual = [];
+
+  for (let nome in metasPorMateria) {
+    labels.push(nome);
+    const meta  = metasPorMateria[nome] || 0;
+    const feito = progressoAtual[nome]  || 0;
+    dadosFeitos.push(feito);
+    dadosPercentual.push(meta > 0 ? +((feito / meta) * 100).toFixed(1) : 0);
+  }
+
+  const ctx1 = document.getElementById("graficoProgresso");
+  const ctx2 = document.getElementById("graficoDesempenho");
+  if (!ctx1 || !ctx2) return;
+
+  if (graficoProgresso) graficoProgresso.destroy();
+  if (graficoMeta)      graficoMeta.destroy();
+
+  const chartDefaults = {
+    responsive: true,
+    animation:  false,
+    plugins: {
+      legend:  { display: false },
+      tooltip: {
+        bodyFont: { family: 'DM Sans' },
+        titleFont: { family: 'Syne', weight: '700' }
+      }
+    },
+    scales: {
+      x: { ticks: { color: '#6b6b8a', font: { family: 'DM Sans' } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      y: { ticks: { color: '#6b6b8a', font: { family: 'DM Sans' } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+    }
+  };
+
+  graficoProgresso = new Chart(ctx1, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label:           "Questões Resolvidas",
+        data:            dadosFeitos,
+        backgroundColor: 'rgba(124,107,255,0.6)',
+        borderColor:     '#7c6bff',
+        borderWidth:     2,
+        borderRadius:    8
+      }]
+    },
+    options: chartDefaults
+  });
+
+  graficoMeta = new Chart(ctx2, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label:           "% da Meta",
+        data:            dadosPercentual,
+        backgroundColor: 'rgba(6,214,160,0.6)',
+        borderColor:     '#06d6a0',
+        borderWidth:     2,
+        borderRadius:    8
+      }]
+    },
+    options: chartDefaults
+  });
+}
+
+function salvarDados() {
+  localStorage.setItem("planner_dados_v2", JSON.stringify({
+    materias,
+    metasPorMateria,
+    historicoMetas,
+    progressoSemanal,
+    agendaRevisoes,
+    revisoesGeradasPorMateria,
+    revisoesInteligentes,
+    historicoRevisoesInteligentes,
+    materiasConcluidas,
+    semanaUltimaVista
+  }));
+}
+
+function carregarDados() {
+  const raw = localStorage.getItem("planner_dados_v2") || localStorage.getItem("planner_dados");
+  if (!raw) return;
+
+  const p = JSON.parse(raw);
+  materias                      = p.materias                      || {};
+  historicoRevisoesInteligentes = p.historicoRevisoesInteligentes || {};
+  metasPorMateria               = p.metasPorMateria               || {};
+  historicoMetas                = p.historicoMetas                || {};
+  materiasConcluidas            = p.materiasConcluidas            || {};
+  progressoSemanal              = p.progressoSemanal              || {};
+  agendaRevisoes                = p.agendaRevisoes                || [];
+  revisoesGeradasPorMateria     = p.revisoesGeradasPorMateria     || {};
+  revisoesInteligentes          = {};
+
+  const revisoesRaw = p.revisoesInteligentes || {};
+  for (let nome in revisoesRaw) {
+    revisoesInteligentes[nome] = revisoesRaw[nome].map(item =>
+      typeof item === "string"
+        ? { data: item, concluida: false }
+        : { data: item.data, concluida: item.concluida || false }
+    );
+  }
+
+  semanaUltimaVista = p.semanaUltimaVista ?? obterSemanaAtual();
+
+  for (let nome in materias) {
+    if (metasPorMateria[nome] === undefined) metasPorMateria[nome] = metaAutomatica(nome);
+  }
+
+  limparMetasOrfas();
+}
+
+function resetarSistema() {
+  if (!confirm("Apagar TODOS os dados do planner? Esta ação não pode ser desfeita.")) return;
+  localStorage.removeItem("planner_dados");
+  localStorage.removeItem("planner_dados_v2");
+  location.reload();
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-
   carregarDados();
-
   detectarTrocaDeSemanaEFechar();
-
   gerarRevisoesInteligentesAutomaticamente();
 
   atualizarDesempenho();
+  atualizarStatsSummary();
   atualizarMetasVisuais();
   atualizarHistorico();
   atualizarDashboard();
   renderizarMateriasConcluidas();
   renderizarHistoricoRevisoesInteligentes();
-
-  verificarRevisoesAtrasadas();
-
   renderizarGrade();
   renderizarProximasRevisoes();
-
   pomoDefinirEtapa("foco");
-
 });
-
-function resetarSistema() {
-
-  if (!confirm("Deseja apagar TODOS os dados do planner?"))
-    return;
-
-  localStorage.removeItem("planner_dados");
-
-  location.reload();
-}
-function concluirMateria(nome) {
-
-  if (!materias[nome]) return;
-
-  if (!confirm(`Marcar ${nome} como concluída?`)) return;
-
-  materiasConcluidas[nome] = {
-    dados: materias[nome],
-    dataConclusao: new Date().toISOString()
-  };
-
-  delete materias[nome];
-  delete metasPorMateria[nome];
-  delete revisoesInteligentes[nome];
-  delete revisoesGeradasPorMateria[nome];
-
-  agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
-
-  salvarDados();
-
-  atualizarDesempenho();
-  atualizarMetasVisuais();
-  atualizarDashboard();
-  renderizarGrade();
-  renderizarProximasRevisoes();
-}
-function renderizarMateriasConcluidas() {
-  const container = document.getElementById("materiasConcluidas");
-  if (!container) return;
-
-  container.innerHTML = "";
-
-  for (let nome in materiasConcluidas) {
-    const item = materiasConcluidas[nome];
-
-    container.innerHTML += `
-      <div class="historico-card">
-        <h4>${nome}</h4>
-        <p>Concluída em ${new Date(item.dataConclusao).toLocaleDateString("pt-BR")}</p>
-      </div>
-    `;
-  }
-}
-
-
-
