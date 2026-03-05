@@ -11,21 +11,24 @@ let metasPorMateria = {};
 let historicoMetas = {};
 let progressoSemanal = {};
 let semanaUltimaVista = null;
+let streakDias = 0;
+let ultimoDiaEstudo = null;
+let pomoSessoes = [];
 
 function mostrarPainel(nome, tabEl) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-
   const panel = document.getElementById('panel-' + nome);
   if (panel) panel.classList.add('active');
-
   if (tabEl) {
     tabEl.classList.add('active');
   } else {
     document.querySelectorAll('.tab').forEach(t => {
-      if (t.getAttribute('onclick')?.includes(nome)) t.classList.add('active');
+      if (t.getAttribute('onclick')?.includes(`'${nome}'`)) t.classList.add('active');
     });
   }
+  if (nome === 'dashboard') atualizarDashboard();
+  if (nome === 'pomodoro') atualizarPomoMaterias();
 }
 
 function toast(msg, tipo = 'info') {
@@ -35,7 +38,27 @@ function toast(msg, tipo = 'info') {
   el.className = 'toast';
   el.innerHTML = `<span>${icons[tipo] || 'ℹ️'}</span><span>${msg}</span>`;
   wrap.appendChild(el);
-  setTimeout(() => el.remove(), 3200);
+  setTimeout(() => el.remove(), 3300);
+}
+
+function atualizarStreak() {
+  const hoje = new Date().toDateString();
+  if (!ultimoDiaEstudo) {
+    ultimoDiaEstudo = hoje; streakDias = 1;
+  } else {
+    const ontem = new Date();
+    ontem.setDate(ontem.getDate() - 1);
+    if (ultimoDiaEstudo === hoje) {
+        } else if (ultimoDiaEstudo === ontem.toDateString()) {
+      streakDias++;
+      ultimoDiaEstudo = hoje;
+    } else {
+      streakDias = 1;
+      ultimoDiaEstudo = hoje;
+    }
+  }
+  document.getElementById('streakCount').textContent = streakDias;
+  salvarDados();
 }
 
 function atualizarStatsSummary() {
@@ -46,11 +69,17 @@ function atualizarStatsSummary() {
   }
   const total = totalAcertos + totalErros;
   const media = total > 0 ? ((totalAcertos / total) * 100).toFixed(1) + '%' : '—';
-
   document.getElementById('statMaterias').textContent = Object.keys(materias).length;
   document.getElementById('statAcertos').textContent  = totalAcertos;
   document.getElementById('statErros').textContent    = totalErros;
   document.getElementById('statMedia').textContent    = media;
+}
+
+function atualizarDatalist() {
+  const dl = document.getElementById('materiasList');
+  if (!dl) return;
+  const todos = [...Object.keys(materias), ...Object.keys(materiasConcluidas)];
+  dl.innerHTML = todos.map(n => `<option value="${n}">`).join('');
 }
 
 function calcularPrioridade(percentual) {
@@ -85,17 +114,14 @@ function metaAutomatica(nome) {
 }
 
 function gerarMetasAutomaticas() {
-  const novas = {};
   for (let nome in materias) {
     const dados = materias[nome];
     const total = dados.totalAcertos + dados.totalErros;
     if (total === 0) continue;
-    novas[nome] = metaAutomatica(nome);
+    metasPorMateria[nome] = metaAutomatica(nome);
   }
-  metasPorMateria = novas;
   atualizarMetasVisuais();
-  salvarDados();
-  atualizarDashboard();
+  salvarDados(); atualizarDashboard();
   toast('Metas geradas automaticamente!', 'success');
 }
 
@@ -110,6 +136,15 @@ function registrarProgressoSemanal(nome, quantidade) {
   if (!progressoSemanal[semana])       progressoSemanal[semana] = {};
   if (!progressoSemanal[semana][nome]) progressoSemanal[semana][nome] = 0;
   progressoSemanal[semana][nome] += quantidade;
+}
+
+function atualizarInfoSemana() {
+  const el = document.getElementById('semanaInfoMetas');
+  if (!el) return;
+  const semana = obterSemanaAtual();
+  const hoje = new Date();
+  const diasSemana = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+  el.innerHTML = `📅 <strong>Semana ${semana}</strong> &nbsp;·&nbsp; Hoje é ${diasSemana[hoje.getDay()]}, ${hoje.toLocaleDateString('pt-BR')}`;
 }
 
 function atualizarMetasVisuais() {
@@ -151,8 +186,8 @@ function atualizarMetasVisuais() {
           <div class="meta-fill ${fillClass}" style="width:${Math.min(item.pct, 100)}%"></div>
         </div>
         <div class="meta-actions">
-          <button class="btn btn-secondary btn-sm" onclick="editarMeta('${item.nome}')">✏ Editar meta</button>
-          <button class="btn btn-danger btn-sm"    onclick="excluirMeta('${item.nome}')">🗑 Excluir</button>
+          <button class="btn btn-secondary btn-sm" onclick="editarMeta('${item.nome}')">✏ Editar</button>
+          <button class="btn btn-danger btn-sm"    onclick="excluirMeta('${item.nome}')">🗑</button>
         </div>
       </div>
     `;
@@ -160,27 +195,27 @@ function atualizarMetasVisuais() {
 }
 
 function excluirMeta(nome) {
-  if (!confirm(`Excluir a meta de ${nome}?`)) return;
+  if (!confirm(`Excluir a meta de "${nome}"?`)) return;
   delete metasPorMateria[nome];
   salvarDados(); atualizarMetasVisuais(); atualizarDashboard();
   toast(`Meta de "${nome}" excluída.`, 'info');
 }
 
 function editarMeta(nome) {
-  const nova = prompt(`Nova meta semanal para ${nome}:`, metasPorMateria[nome]);
+  const nova = prompt(`Nova meta semanal para "${nome}":`, metasPorMateria[nome]);
   if (!nova) return;
   const valor = parseInt(nova, 10);
   if (isNaN(valor) || valor <= 0) { toast('Valor inválido.', 'error'); return; }
   metasPorMateria[nome] = valor;
   salvarDados(); atualizarMetasVisuais(); atualizarDashboard();
-  toast(`Meta de "${nome}" atualizada para ${valor} questões!`, 'success');
+  toast(`Meta de "${nome}" → ${valor} questões!`, 'success');
 }
 
 function obterSnapshotSemana(semana) {
   return {
-    metas:              { ...metasPorMateria },
-    progresso:          { ...(progressoSemanal[semana] || {}) },
-    dataFechamentoISO:  new Date().toISOString()
+    metas:             { ...metasPorMateria },
+    progresso:         { ...(progressoSemanal[semana] || {}) },
+    dataFechamentoISO: new Date().toISOString()
   };
 }
 
@@ -206,7 +241,7 @@ function fecharSemanaAgora() {
   historicoMetas[semanaAtual] = obterSnapshotSemana(semanaAtual);
   progressoSemanal[semanaAtual] = {};
   salvarDados(); atualizarHistorico(); atualizarMetasVisuais(); atualizarDashboard();
-  toast(`Semana ${semanaAtual} salva no histórico!`, 'success');
+  toast(`Semana ${semanaAtual} arquivada!`, 'success');
 }
 
 function atualizarHistorico() {
@@ -214,9 +249,7 @@ function atualizarHistorico() {
   if (!container) return;
 
   const semanas = Object.keys(historicoMetas)
-    .map(n => parseInt(n))
-    .filter(n => !isNaN(n))
-    .sort((a, b) => b - a);
+    .map(n => parseInt(n)).filter(n => !isNaN(n)).sort((a, b) => b - a);
 
   if (!semanas.length) {
     container.innerHTML = '<div class="empty"><div class="empty-icon">📂</div><div class="empty-text">Nenhum histórico ainda.</div></div>';
@@ -228,20 +261,20 @@ function atualizarHistorico() {
     const metas = dados.metas    || {};
     const prog  = dados.progresso || {};
     const data  = dados.dataFechamentoISO
-      ? new Date(dados.dataFechamentoISO).toLocaleDateString("pt-BR")
-      : '';
+      ? new Date(dados.dataFechamentoISO).toLocaleDateString("pt-BR") : '';
 
     const rows = Object.keys(metas).map(nome => {
       const meta = metas[nome] || 0;
       const feito = prog[nome] || 0;
       const pct = meta > 0 ? ((feito / meta) * 100).toFixed(1) : '0.0';
-      return `<div class="hist-meta-row"><span>${nome}</span><span>${feito}/${meta} (${pct}%)</span></div>`;
+      const cor = parseFloat(pct) >= 100 ? 'var(--success)' : parseFloat(pct) >= 50 ? 'var(--warning)' : 'var(--danger)';
+      return `<div class="hist-meta-row"><span>${nome}</span><span style="color:${cor};font-weight:600;">${feito}/${meta} (${pct}%)</span></div>`;
     }).join('');
 
     return `
       <div class="hist-meta-card">
         <div class="hist-meta-header">Semana ${semana}${data ? ` — fechada em ${data}` : ''}</div>
-        ${rows || '<span style="color:var(--muted);font-size:13px;">Sem metas registradas.</span>'}
+        ${rows || '<span style="color:var(--muted);font-size:12.5px;">Sem metas.</span>'}
       </div>
     `;
   }).join('');
@@ -252,12 +285,11 @@ function registrarBloco() {
   const acertos = parseInt(document.getElementById("acertos").value, 10);
   const erros   = parseInt(document.getElementById("erros").value, 10);
 
-  if (!nome)                         { toast('Informe o nome da matéria.', 'warning'); return; }
+  if (!nome)                          { toast('Informe o nome da matéria.', 'warning'); return; }
   if (isNaN(acertos) || isNaN(erros)) { toast('Informe acertos e erros válidos.', 'warning'); return; }
-  if (acertos < 0 || erros < 0)      { toast('Valores não podem ser negativos.', 'warning'); return; }
+  if (acertos < 0 || erros < 0)       { toast('Valores não podem ser negativos.', 'warning'); return; }
 
   if (!materias[nome]) materias[nome] = { totalAcertos: 0, totalErros: 0 };
-
   materias[nome].totalAcertos += acertos;
   materias[nome].totalErros   += erros;
 
@@ -265,7 +297,8 @@ function registrarBloco() {
 
   gerarRevisoesExtrasPorVolume(nome);
   registrarProgressoSemanal(nome, acertos + erros);
-
+  atualizarStreak();
+  atualizarDatalist();
   atualizarDesempenho();
   atualizarMetasVisuais();
   limparCampos();
@@ -275,38 +308,34 @@ function registrarBloco() {
   gerarESalvarRevisoes(nome);
   renderizarProximasRevisoes();
   atualizarStatsSummary();
+  atualizarPomoMaterias();
 
-  toast(`"${nome}" registrado com sucesso!`, 'success');
+  toast(`"${nome}" registrado!`, 'success');
 }
 
 function excluirMateria(nome) {
   if (!confirm(`Deseja excluir completamente "${nome}"?`)) return;
-
   delete materias[nome];
   delete metasPorMateria[nome];
   delete revisoesInteligentes[nome];
   delete revisoesGeradasPorMateria[nome];
   agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
-
   salvarDados();
-  atualizarDesempenho();
-  atualizarMetasVisuais();
-  atualizarDashboard();
-  renderizarGrade();
-  renderizarProximasRevisoes();
-  atualizarStatsSummary();
+  atualizarDesempenho(); atualizarMetasVisuais(); atualizarDashboard();
+  renderizarGrade(); renderizarProximasRevisoes(); atualizarStatsSummary();
+  atualizarDatalist(); atualizarPomoMaterias();
   toast(`"${nome}" excluída.`, 'info');
 }
 
 function atualizarDesempenho() {
-  const container  = document.getElementById("tabelaDesempenho");
+  const container   = document.getElementById("tabelaDesempenho");
   const diagnostico = document.getElementById("diagnostico");
   if (!container || !diagnostico) return;
 
   const nomes = Object.keys(materias);
 
   if (!nomes.length) {
-    container.innerHTML  = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma matéria registrada ainda.</div></div>';
+    container.innerHTML   = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma matéria registrada ainda.</div></div>';
     diagnostico.innerHTML = '<div class="empty"><div class="empty-icon">💡</div><div class="empty-text">Registre questões para ver o diagnóstico.</div></div>';
     return;
   }
@@ -321,9 +350,10 @@ function atualizarDesempenho() {
   container.innerHTML = lista.map(({ nome, dados, pct, prioridade }) => {
     let fillClass, statusClasse, statusTexto;
     if      (pct < 60) { fillClass = 'fill-red';    statusClasse = 'status-critico';   statusTexto = '⚠ Precisa reforçar'; }
-    else if (pct < 80) { fillClass = 'fill-yellow';  statusClasse = 'status-bom';       statusTexto = '↗ Desempenho moderado'; }
-    else               { fillClass = 'fill-green';   statusClasse = 'status-excelente'; statusTexto = '✔ Excelente domínio'; }
+    else if (pct < 80) { fillClass = 'fill-yellow'; statusClasse = 'status-bom';       statusTexto = '↗ Desempenho moderado'; }
+    else               { fillClass = 'fill-green';  statusClasse = 'status-excelente'; statusTexto = '✔ Excelente domínio'; }
 
+    const total = dados.totalAcertos + dados.totalErros;
     return `
       <div class="performance-card">
         <div class="performance-header">
@@ -333,12 +363,13 @@ function atualizarDesempenho() {
         <div class="perf-stats">
           <div class="perf-stat stat-green"><strong>${dados.totalAcertos}</strong><small>Acertos</small></div>
           <div class="perf-stat stat-red"><strong>${dados.totalErros}</strong><small>Erros</small></div>
-          <div class="perf-stat stat-purple"><strong>${pct.toFixed(1)}%</strong><small>Aproveitamento</small></div>
+          <div class="perf-stat stat-purple"><strong>${pct.toFixed(1)}%</strong><small>Aproveit.</small></div>
         </div>
         <div class="progress-track">
           <div class="progress-fill ${fillClass}" style="width:${pct}%"></div>
         </div>
-        <div class="perf-status ${statusClasse}">${statusTexto}</div>
+        <div class="perf-status ${statusClasse}" style="margin-bottom:8px;">${statusTexto}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Total: ${total} questões resolvidas</div>
         <div class="card-actions">
           <button class="btn btn-success btn-sm" onclick="concluirMateria('${nome}')">✔ Concluir</button>
           <button class="btn btn-danger btn-sm"  onclick="excluirMateria('${nome}')">🗑 Excluir</button>
@@ -356,9 +387,9 @@ function gerarDiagnostico(lista) {
   if (!container || !lista.length) return;
 
   const configs = {
-    alta:  { classe: 'diag-alta',  icone: '🔴', titulo: 'Desempenho Crítico',   plano: 'Revisar teoria imediatamente + resolver 20 questões diárias focadas em erros.' },
-    media: { classe: 'diag-media', icone: '🟡', titulo: 'Desempenho Moderado',  plano: 'Aumentar volume de questões e revisar os principais erros cometidos.' },
-    baixa: { classe: 'diag-baixa', icone: '🟢', titulo: 'Bom Desempenho',       plano: 'Manter revisões periódicas e simulados para consolidar o domínio.' }
+    alta:  { classe: 'diag-alta',  icone: '🔴', titulo: 'Desempenho Crítico',  plano: 'Revisar teoria imediatamente + resolver 20 questões diárias focando nos erros.' },
+    media: { classe: 'diag-media', icone: '🟡', titulo: 'Desempenho Moderado', plano: 'Aumentar volume de questões e revisar os principais pontos de erro.' },
+    baixa: { classe: 'diag-baixa', icone: '🟢', titulo: 'Bom Desempenho',      plano: 'Manter revisões periódicas e simulados para consolidar o domínio.' }
   };
 
   container.innerHTML = [...lista].sort((a, b) => a.pct - b.pct).map(({ nome, pct, prioridade }) => {
@@ -369,7 +400,7 @@ function gerarDiagnostico(lista) {
           <div class="diag-name"><span>${c.icone}</span>${nome}</div>
           <div class="diag-pct">${pct.toFixed(1)}%</div>
         </div>
-        <div><strong style="font-size:14px;">${c.titulo}</strong></div>
+        <div style="font-size:13.5px;font-weight:700;margin-bottom:4px;">${c.titulo}</div>
         <div class="diag-plan">${c.plano}</div>
       </div>
     `;
@@ -379,35 +410,39 @@ function gerarDiagnostico(lista) {
 function concluirMateria(nome) {
   if (!materias[nome]) return;
   if (!confirm(`Marcar "${nome}" como concluída?`)) return;
-
   materiasConcluidas[nome] = { dados: materias[nome], dataConclusao: new Date().toISOString() };
   delete materias[nome];
   delete metasPorMateria[nome];
   delete revisoesInteligentes[nome];
   delete revisoesGeradasPorMateria[nome];
   agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
-
-  salvarDados(); atualizarDesempenho(); atualizarMetasVisuais(); atualizarDashboard();
+  salvarDados();
+  atualizarDesempenho(); atualizarMetasVisuais(); atualizarDashboard();
   renderizarGrade(); renderizarProximasRevisoes(); renderizarMateriasConcluidas();
+  atualizarDatalist(); atualizarPomoMaterias();
   toast(`"${nome}" concluída! 🎓`, 'success');
 }
 
 function renderizarMateriasConcluidas() {
   const container = document.getElementById("materiasConcluidas");
   if (!container) return;
-
   const nomes = Object.keys(materiasConcluidas);
   if (!nomes.length) {
     container.innerHTML = '<div class="empty"><div class="empty-icon">🎓</div><div class="empty-text">Nenhuma matéria concluída ainda.</div></div>';
     return;
   }
-
   container.innerHTML = nomes.map(nome => {
     const item = materiasConcluidas[nome];
     const data = new Date(item.dataConclusao).toLocaleDateString("pt-BR");
+    const dados = item.dados;
+    const total = dados.totalAcertos + dados.totalErros;
+    const pct   = total > 0 ? ((dados.totalAcertos / total) * 100).toFixed(1) : '—';
     return `
       <div class="concluida-card">
-        <span class="concluida-nome">✅ ${nome}</span>
+        <div>
+          <div class="concluida-nome">✅ ${nome}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">${total} questões · ${pct}% aproveitamento</div>
+        </div>
         <span class="concluida-data">Concluída em ${data}</span>
       </div>
     `;
@@ -421,7 +456,7 @@ function gerarESalvarRevisoes(nome) {
   const total = dados.totalAcertos + dados.totalErros;
   if (total === 0) return;
 
-  const pct       = (dados.totalAcertos / total) * 100;
+  const pct        = (dados.totalAcertos / total) * 100;
   const prioridade = calcularPrioridade(pct);
   const ranges     = { alta: [3, 7], media: [10, 15], baixa: [30, 45] };
   const [min, max] = ranges[prioridade];
@@ -463,7 +498,7 @@ function renderizarProximasRevisoes() {
       const dataObj = new Date(rev.data); dataObj.setHours(0, 0, 0, 0);
       let status = 'futura';
       if (!rev.concluida) {
-        if      (dataObj < hoje)                              status = 'atrasada';
+        if      (dataObj < hoje)                            status = 'atrasada';
         else if (dataObj.getTime() === hoje.getTime()) status = 'hoje';
       }
       lista.push({ materia: nome, data: new Date(rev.data), concluida: rev.concluida, status, index });
@@ -487,10 +522,8 @@ function renderizarProximasRevisoes() {
       </div>
       <span class="rev-tag tag-${item.status}">${tagLabels[item.status]}</span>
       <div class="rev-btns">
-        <button class="btn btn-success btn-sm" onclick="marcarRevisaoInteligente('${item.materia}', ${item.index})">
-          ${item.concluida ? '✔' : '✔ Concluir'}
-        </button>
-        <button class="btn btn-secondary btn-sm" onclick="recalcularRevisoes('${item.materia}')">🔁</button>
+        <button class="btn btn-success btn-sm" onclick="marcarRevisaoInteligente('${item.materia}', ${item.index})">✔ Concluir</button>
+        <button class="btn btn-secondary btn-sm" onclick="recalcularRevisoes('${item.materia}')" title="Recalcular">🔁</button>
       </div>
     </div>
   `).join('');
@@ -499,21 +532,17 @@ function renderizarProximasRevisoes() {
 function marcarRevisaoInteligente(nome, index) {
   const revisao = revisoesInteligentes[nome]?.[index];
   if (!revisao) return;
-
   if (!historicoRevisoesInteligentes[nome]) historicoRevisoesInteligentes[nome] = [];
-
   historicoRevisoesInteligentes[nome].push({
     dataOriginal:  revisao.data,
     dataConclusao: new Date().toISOString()
   });
-
   revisoesInteligentes[nome].splice(index, 1);
   if (!revisoesInteligentes[nome].length) delete revisoesInteligentes[nome];
-
   salvarDados();
   renderizarProximasRevisoes();
   renderizarHistoricoRevisoesInteligentes();
-  toast('Revisão concluída!', 'success');
+  toast('Revisão concluída! ✅', 'success');
 }
 
 function renderizarHistoricoRevisoesInteligentes() {
@@ -524,8 +553,7 @@ function renderizarHistoricoRevisoesInteligentes() {
   for (let nome in historicoRevisoesInteligentes) {
     historicoRevisoesInteligentes[nome].forEach((item, index) => {
       lista.push({
-        materia:       nome,
-        indexOriginal: index,
+        materia: nome, indexOriginal: index,
         dataOriginal:  new Date(item.dataOriginal),
         dataConclusao: new Date(item.dataConclusao)
       });
@@ -539,18 +567,13 @@ function renderizarHistoricoRevisoesInteligentes() {
   lista.sort((a, b) => b.dataConclusao - a.dataConclusao);
 
   if (!lista.length) {
-    container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhuma revisão encontrada.</div></div>';
-    atualizarOpcoesFiltroHistorico();
-    return;
+    container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhuma revisão concluída ainda.</div></div>';
+    atualizarOpcoesFiltroHistorico(); return;
   }
 
   const limite = historicoExpandido ? lista.length : 5;
 
-  container.innerHTML = `
-    <div style="margin-bottom:10px;color:var(--muted);font-size:13px;">
-      Mostrando ${Math.min(limite, lista.length)} de ${lista.length} revisões
-    </div>
-  `;
+  container.innerHTML = `<div style="margin-bottom:9px;color:var(--muted);font-size:12.5px;">Mostrando ${Math.min(limite, lista.length)} de ${lista.length}</div>`;
 
   container.innerHTML += lista.slice(0, limite).map(item => `
     <div class="hist-card">
@@ -559,13 +582,13 @@ function renderizarHistoricoRevisoesInteligentes() {
         📅 Prevista: ${item.dataOriginal.toLocaleDateString("pt-BR")}<br>
         ✅ Concluída: ${item.dataConclusao.toLocaleDateString("pt-BR")}
       </div>
-      <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="desconcluirRevisao('${item.materia}', ${item.indexOriginal})">↩ Desconcluir</button>
+      <button class="btn btn-secondary btn-sm" style="margin-top:9px;" onclick="desconcluirRevisao('${item.materia}', ${item.indexOriginal})">↩ Desfazer</button>
     </div>
   `).join('');
 
   if (lista.length > 5) {
     container.innerHTML += `
-      <div style="text-align:center;margin-top:12px;">
+      <div style="text-align:center;margin-top:10px;">
         <button class="btn btn-secondary" onclick="toggleHistorico()">
           ${historicoExpandido ? '▲ Ver menos' : '▼ Ver mais'}
         </button>
@@ -618,55 +641,41 @@ function recalcularRevisoes(nome) {
 
 function criarRevisaoSeNaoExiste(nome, prioridade, dataObj) {
   const existe = agendaRevisoes.some(ev =>
-    ev.materia === nome &&
-    ev.tipo    === "Revisão" &&
+    ev.materia === nome && ev.tipo === "Revisão" &&
     new Date(ev.data).toDateString() === dataObj.toDateString()
   );
   if (existe) return false;
   agendaRevisoes.push({
-    id:            crypto.randomUUID(),
-    data:          dataObj.toISOString(),
-    tipo:          "Revisão",
-    materia:       nome,
-    duracao:       30,
-    prioridade,
-    concluido:     false,
-    reagendamentos: 0
+    id: crypto.randomUUID(), data: dataObj.toISOString(),
+    tipo: "Revisão", materia: nome, duracao: 30,
+    prioridade, concluido: false, reagendamentos: 0
   });
   return true;
 }
 
 function criarAgendaInteligente() {
-  const hoje       = new Date();
+  const hoje        = new Date();
   const limiteFinal = new Date(); limiteFinal.setMonth(limiteFinal.getMonth() + 3);
-
   agendaRevisoes = agendaRevisoes.filter(ev => new Date(ev.data) >= hoje);
 
   for (let nome in materias) {
     const dados = materias[nome];
     const total = dados.totalAcertos + dados.totalErros;
     if (total === 0) continue;
-
     const pct          = (dados.totalAcertos / total) * 100;
     const prioridade   = calcularPrioridade(pct);
     const duracaoEstudo = prioridade === "alta" ? 60 : 40;
 
     const jaExiste = agendaRevisoes.some(ev =>
-      ev.tipo    === "Estudo" &&
-      ev.materia === nome &&
+      ev.tipo === "Estudo" && ev.materia === nome &&
       new Date(ev.data).toDateString() === hoje.toDateString()
     );
 
     if (!jaExiste) {
       agendaRevisoes.push({
-        id:            crypto.randomUUID(),
-        data:          hoje.toISOString(),
-        tipo:          "Estudo",
-        materia:       nome,
-        duracao:       duracaoEstudo,
-        prioridade,
-        concluido:     false,
-        reagendamentos: 0
+        id: crypto.randomUUID(), data: hoje.toISOString(),
+        tipo: "Estudo", materia: nome, duracao: duracaoEstudo,
+        prioridade, concluido: false, reagendamentos: 0
       });
     }
 
@@ -675,17 +684,23 @@ function criarAgendaInteligente() {
       const intervalo = prioridade === "alta"  ? 3  + Math.floor(Math.random() * 5)
                       : prioridade === "media" ? 10 + Math.floor(Math.random() * 6)
                       :                         30 + Math.floor(Math.random() * 16);
-
       dataRevisao = new Date(dataRevisao);
       dataRevisao.setDate(dataRevisao.getDate() + intervalo);
       if (dataRevisao > limiteFinal) break;
-
       criarRevisaoSeNaoExiste(nome, prioridade, dataRevisao);
     }
   }
 
   salvarDados(); renderizarGrade();
-  toast('Agenda gerada com sucesso!', 'success');
+  toast('Agenda gerada!', 'success');
+}
+
+function limparAgendaConcluida() {
+  const antes = agendaRevisoes.length;
+  agendaRevisoes = agendaRevisoes.filter(ev => !ev.concluido);
+  const removidos = antes - agendaRevisoes.length;
+  salvarDados(); renderizarGrade();
+  toast(`${removidos} evento(s) concluído(s) removido(s).`, 'info');
 }
 
 function renderizarGrade() {
@@ -706,10 +721,9 @@ function renderizarGrade() {
   });
 
   grade.innerHTML = Object.keys(agenda).sort().map(data => {
-    const dataFormatada = new Date(data).toLocaleDateString("pt-BR", {
+    const dataFormatada = new Date(data + 'T12:00:00').toLocaleDateString("pt-BR", {
       weekday: 'long', day: '2-digit', month: 'long'
     });
-
     const eventos = agenda[data].eventos.map(ev => `
       <div class="evento evento-${ev.tipo === 'Estudo' ? 'estudo' : 'revisao'} ${ev.concluido ? 'feito' : ''}">
         <span style="font-weight:600;">${ev.tipo}</span>
@@ -725,7 +739,7 @@ function renderizarGrade() {
       <div class="dia-card">
         <div class="dia-header">${dataFormatada}</div>
         ${eventos}
-        <div class="carga-total">⏱ Carga total: ${agenda[data].carga} min</div>
+        <div class="carga-total">⏱ Carga: ${agenda[data].carga} min</div>
       </div>
     `;
   }).join('');
@@ -744,11 +758,11 @@ function gerarRevisoesExtrasPorVolume(nome) {
   const total = dados.totalAcertos + dados.totalErros;
   if (total === 0) return;
 
-  const pct              = (dados.totalAcertos / total) * 100;
-  const prioridade       = calcularPrioridade(pct);
+  const pct               = (dados.totalAcertos / total) * 100;
+  const prioridade        = calcularPrioridade(pct);
   const revisoesDesejadas = Math.floor(total / QUESTOES_POR_REVISAO);
-  const jaGeradas        = revisoesGeradasPorMateria[nome] || 0;
-  const faltam           = revisoesDesejadas - jaGeradas;
+  const jaGeradas         = revisoesGeradasPorMateria[nome] || 0;
+  const faltam            = revisoesDesejadas - jaGeradas;
   if (faltam <= 0) return;
 
   const saltos = { alta: 5, media: 10, baixa: 15 };
@@ -758,8 +772,7 @@ function gerarRevisoesExtrasPorVolume(nome) {
   for (let k = 0; k < faltam; k++) {
     const revs = agendaRevisoes
       .filter(ev => ev.tipo === "Revisão" && ev.materia === nome)
-      .map(ev => new Date(ev.data))
-      .sort((a, b) => a - b);
+      .map(ev => new Date(ev.data)).sort((a, b) => a - b);
 
     let base      = revs.length ? revs[revs.length - 1] : hoje;
     let tentativa = new Date(base);
@@ -780,10 +793,10 @@ function gerarRevisoesExtrasPorVolume(nome) {
 
 const POMO = { focoMin: 40, pausaCurtaMin: 5, pausaLongaMin: 15, ciclosParaPausaLonga: 4 };
 
-let pomoIntervalo       = null;
-let pomoRodando         = false;
-let pomoEtapa           = "foco";
-let pomoSegundos        = POMO.focoMin * 60;
+let pomoIntervalo        = null;
+let pomoRodando          = false;
+let pomoEtapa            = "foco";
+let pomoSegundos         = POMO.focoMin * 60;
 let pomoCiclosConcluidos = 0;
 
 function aplicarConfigPomo() {
@@ -800,7 +813,7 @@ function pomoFormatar(seg) {
 function pomoCiclosUI() {
   const txt  = document.getElementById('pomoCiclosTexto');
   const dots = document.getElementById('pomoDots');
-  if (txt)  txt.textContent = `Ciclo ${(pomoCiclosConcluidos % POMO.ciclosParaPausaLonga) + 1} de ${POMO.ciclosParaPausaLonga}`;
+  if (txt) txt.textContent = `Ciclo ${(pomoCiclosConcluidos % POMO.ciclosParaPausaLonga) + 1} de ${POMO.ciclosParaPausaLonga}`;
   if (dots) {
     const atual = pomoCiclosConcluidos % POMO.ciclosParaPausaLonga;
     dots.querySelectorAll('.pomo-dot').forEach((d, i) => {
@@ -815,6 +828,8 @@ function pomoUI() {
   const st = document.getElementById("pomodoroStatus");
   if (st) st.textContent = pomoEtapa === 'foco' ? 'FOCO' : pomoEtapa === 'curta' ? 'PAUSA CURTA' : 'PAUSA LONGA';
   pomoCiclosUI();
+  if (pomoRodando) document.title = `${pomoFormatar(pomoSegundos)} — Planner de Estudos`;
+  else document.title = 'Planner de Estudos';
 }
 
 function pomoDefinirEtapa(etapa) {
@@ -827,26 +842,68 @@ function pomoDefinirEtapa(etapa) {
 
 function pomoBeep() {
   try {
+    const cfgSom = document.getElementById('cfgSom');
+    if (cfgSom && !cfgSom.checked) return;
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.connect(g); g.connect(ctx.destination);
-    o.frequency.value = 880;
-    g.gain.value = 0.05;
-    o.start();
-    setTimeout(() => { o.stop(); ctx.close(); }, 200);
+    o.frequency.value = 880; g.gain.value = 0.05;
+    o.start(); setTimeout(() => { o.stop(); ctx.close(); }, 250);
   } catch (e) {}
+}
+
+function pomoRegistrarSessao() {
+  const materia = document.getElementById('pomoMateriaSelect')?.value || '';
+  if (!materia || pomoEtapa !== 'foco') return;
+  const hoje = new Date().toDateString();
+  pomoSessoes.push({ materia, data: hoje, duracao: POMO.focoMin });
+  salvarDados();
+  atualizarPomoSessoes();
+  if (materias[materia]) atualizarStreak();
+}
+
+function atualizarPomoSessoes() {
+  const container = document.getElementById('pomoSessoesHoje');
+  if (!container) return;
+  const hoje = new Date().toDateString();
+  const sessoes = pomoSessoes.filter(s => s.data === hoje);
+  if (!sessoes.length) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:13px;">Nenhuma sessão concluída hoje.</div>';
+    return;
+  }
+  const totalMin = sessoes.reduce((acc, s) => acc + s.duracao, 0);
+  container.innerHTML = `
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">
+      ${sessoes.length} sessão(ões) — ${totalMin} min estudados hoje
+    </div>
+    ${sessoes.map(s => `
+      <div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span>${s.materia || '—'}</span>
+        <span style="color:var(--muted);">${s.duracao} min</span>
+      </div>
+    `).join('')}
+  `;
+}
+
+function atualizarPomoMaterias() {
+  const select = document.getElementById('pomoMateriaSelect');
+  if (!select) return;
+  const nomes = Object.keys(materias);
+  select.innerHTML = '<option value="">— Selecionar matéria —</option>';
+  nomes.forEach(n => { select.innerHTML += `<option value="${n}">${n}</option>`; });
 }
 
 function pomoAvancar() {
   pomoBeep();
   if (pomoEtapa === "foco") {
+    pomoRegistrarSessao();
     pomoCiclosConcluidos++;
     pomoDefinirEtapa(pomoCiclosConcluidos % POMO.ciclosParaPausaLonga === 0 ? "longa" : "curta");
-    toast('Foco concluído! Hora de descansar.', 'success');
+    toast('Foco concluído! Hora de descansar. ☕', 'success');
   } else {
     pomoDefinirEtapa("foco");
-    toast('Pausa encerrada. Vamos focar!', 'info');
+    toast('Pausa encerrada. Vamos focar! 🎯', 'info');
   }
 }
 
@@ -863,13 +920,18 @@ function pomodoroIniciar() {
   pomoUI();
 }
 
-function pomodoroPausar() { pomoRodando = false; toast('Pausado.', 'info'); }
+function pomodoroPausar() {
+  pomoRodando = false;
+  document.title = 'Planner de Estudos';
+  toast('Pausado.', 'info');
+}
 
 function pomodoroReset() {
   pomoRodando = false;
   if (pomoIntervalo) clearInterval(pomoIntervalo);
   pomoIntervalo = null;
   pomoCiclosConcluidos = 0;
+  document.title = 'Planner de Estudos';
   pomoDefinirEtapa("foco");
 }
 
@@ -877,13 +939,12 @@ function pomodoroPular() { pomoAvancar(); }
 
 let graficoProgresso = null;
 let graficoMeta      = null;
+let graficoAprov     = null;
 
 function atualizarDashboard() {
-  const semana        = obterSemanaAtual();
+  const semana         = obterSemanaAtual();
   const progressoAtual = progressoSemanal[semana] || {};
-  const labels         = [];
-  const dadosFeitos    = [];
-  const dadosPercentual = [];
+  const labels = [], dadosFeitos = [], dadosPercentual = [], dadosAprov = [];
 
   for (let nome in metasPorMateria) {
     labels.push(nome);
@@ -893,26 +954,36 @@ function atualizarDashboard() {
     dadosPercentual.push(meta > 0 ? +((feito / meta) * 100).toFixed(1) : 0);
   }
 
+  for (let nome in materias) {
+    const d = materias[nome];
+    const t = d.totalAcertos + d.totalErros;
+    if (t > 0) dadosAprov.push({ nome, pct: +((d.totalAcertos / t) * 100).toFixed(1) });
+  }
+
   const ctx1 = document.getElementById("graficoProgresso");
   const ctx2 = document.getElementById("graficoDesempenho");
-  if (!ctx1 || !ctx2) return;
+  const ctx3 = document.getElementById("graficoAproveitamento");
+  if (!ctx1 || !ctx2 || !ctx3) return;
 
   if (graficoProgresso) graficoProgresso.destroy();
   if (graficoMeta)      graficoMeta.destroy();
+  if (graficoAprov)     graficoAprov.destroy();
 
-  const chartDefaults = {
-    responsive: true,
-    animation:  false,
+  const baseOpts = {
+    responsive: true, animation: false,
     plugins: {
-      legend:  { display: false },
+      legend: { display: false },
       tooltip: {
         bodyFont: { family: 'DM Sans' },
-        titleFont: { family: 'Syne', weight: '700' }
+        titleFont: { family: 'Syne', weight: '700' },
+        backgroundColor: 'rgba(15,15,26,0.95)',
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1
       }
     },
     scales: {
-      x: { ticks: { color: '#6b6b8a', font: { family: 'DM Sans' } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-      y: { ticks: { color: '#6b6b8a', font: { family: 'DM Sans' } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      x: { ticks: { color: '#555570', font: { family: 'DM Sans', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      y: { ticks: { color: '#555570', font: { family: 'DM Sans', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
     }
   };
 
@@ -921,15 +992,12 @@ function atualizarDashboard() {
     data: {
       labels,
       datasets: [{
-        label:           "Questões Resolvidas",
-        data:            dadosFeitos,
-        backgroundColor: 'rgba(124,107,255,0.6)',
-        borderColor:     '#7c6bff',
-        borderWidth:     2,
-        borderRadius:    8
+        label: "Questões", data: dadosFeitos,
+        backgroundColor: 'rgba(108,92,231,0.55)',
+        borderColor: '#6c5ce7', borderWidth: 2, borderRadius: 7
       }]
     },
-    options: chartDefaults
+    options: baseOpts
   });
 
   graficoMeta = new Chart(ctx2, {
@@ -937,35 +1005,53 @@ function atualizarDashboard() {
     data: {
       labels,
       datasets: [{
-        label:           "% da Meta",
-        data:            dadosPercentual,
-        backgroundColor: 'rgba(6,214,160,0.6)',
-        borderColor:     '#06d6a0',
-        borderWidth:     2,
-        borderRadius:    8
+        label: "% da Meta", data: dadosPercentual,
+        backgroundColor: dadosPercentual.map(v => v >= 100 ? 'rgba(0,206,201,0.55)' : v >= 50 ? 'rgba(253,203,110,0.55)' : 'rgba(255,86,117,0.55)'),
+        borderColor: dadosPercentual.map(v => v >= 100 ? '#00cec9' : v >= 50 ? '#fdcb6e' : '#ff5675'),
+        borderWidth: 2, borderRadius: 7
       }]
     },
-    options: chartDefaults
+    options: baseOpts
   });
+
+  if (dadosAprov.length) {
+    graficoAprov = new Chart(ctx3, {
+      type: "bar",
+      data: {
+        labels: dadosAprov.map(d => d.nome),
+        datasets: [{
+          label: "Aproveitamento %", data: dadosAprov.map(d => d.pct),
+          backgroundColor: dadosAprov.map(d => d.pct >= 80 ? 'rgba(0,206,201,0.55)' : d.pct >= 60 ? 'rgba(253,203,110,0.55)' : 'rgba(255,86,117,0.55)'),
+          borderColor: dadosAprov.map(d => d.pct >= 80 ? '#00cec9' : d.pct >= 60 ? '#fdcb6e' : '#ff5675'),
+          borderWidth: 2, borderRadius: 7
+        }]
+      },
+      options: {
+        ...baseOpts,
+        scales: {
+          ...baseOpts.scales,
+          y: { ...baseOpts.scales.y, min: 0, max: 100 }
+        }
+      }
+    });
+  } else {
+    ctx3.parentElement.innerHTML += '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0;">Registre questões para ver o gráfico.</div>';
+  }
 }
 
 function salvarDados() {
-  localStorage.setItem("planner_dados_v2", JSON.stringify({
-    materias,
-    metasPorMateria,
-    historicoMetas,
-    progressoSemanal,
-    agendaRevisoes,
-    revisoesGeradasPorMateria,
-    revisoesInteligentes,
-    historicoRevisoesInteligentes,
-    materiasConcluidas,
-    semanaUltimaVista
+  localStorage.setItem("planner_dados_v3", JSON.stringify({
+    materias, metasPorMateria, historicoMetas, progressoSemanal,
+    agendaRevisoes, revisoesGeradasPorMateria, revisoesInteligentes,
+    historicoRevisoesInteligentes, materiasConcluidas, semanaUltimaVista,
+    streakDias, ultimoDiaEstudo, pomoSessoes
   }));
 }
 
 function carregarDados() {
-  const raw = localStorage.getItem("planner_dados_v2") || localStorage.getItem("planner_dados");
+  const raw = localStorage.getItem("planner_dados_v3")
+           || localStorage.getItem("planner_dados_v2")
+           || localStorage.getItem("planner_dados");
   if (!raw) return;
 
   const p = JSON.parse(raw);
@@ -977,7 +1063,10 @@ function carregarDados() {
   progressoSemanal              = p.progressoSemanal              || {};
   agendaRevisoes                = p.agendaRevisoes                || [];
   revisoesGeradasPorMateria     = p.revisoesGeradasPorMateria     || {};
-  revisoesInteligentes          = {};
+  streakDias                    = p.streakDias                    || 0;
+  ultimoDiaEstudo               = p.ultimoDiaEstudo               || null;
+  pomoSessoes                   = p.pomoSessoes                   || [];
+  revisoesInteligentes = {};
 
   const revisoesRaw = p.revisoesInteligentes || {};
   for (let nome in revisoesRaw) {
@@ -999,13 +1088,88 @@ function carregarDados() {
 
 function resetarSistema() {
   if (!confirm("Apagar TODOS os dados do planner? Esta ação não pode ser desfeita.")) return;
-  localStorage.removeItem("planner_dados");
-  localStorage.removeItem("planner_dados_v2");
+  ['planner_dados', 'planner_dados_v2', 'planner_dados_v3'].forEach(k => localStorage.removeItem(k));
   location.reload();
 }
 
+function exportarDados() {
+  const raw = localStorage.getItem("planner_dados_v3");
+  if (!raw) { toast('Nenhum dado para exportar.', 'warning'); return; }
+  const blob = new Blob([raw], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `planner-de-estudos-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('Backup exportado!', 'success');
+}
+
+function importarDados(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.materias) { toast('Arquivo inválido.', 'error'); return; }
+      localStorage.setItem("planner_dados_v3", JSON.stringify(data));
+      toast('Backup importado! Recarregando...', 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch {
+      toast('Erro ao ler o arquivo.', 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+const toggleBtn = document.getElementById("toggleTheme");
+
+function aplicarTemaSalvo() {
+  const tema = localStorage.getItem("tema");
+  const cfgTema = document.getElementById('cfgTema');
+  if (tema === "light") {
+    document.body.classList.add("light-mode");
+    if (toggleBtn) toggleBtn.textContent = "☀️ Light";
+    if (cfgTema) cfgTema.checked = true;
+  } else {
+    if (toggleBtn) toggleBtn.textContent = "🌙 Dark";
+    if (cfgTema) cfgTema.checked = false;
+  }
+}
+
+function alternarTema() {
+  document.body.classList.toggle("light-mode");
+  const isLight = document.body.classList.contains("light-mode");
+  localStorage.setItem("tema", isLight ? "light" : "dark");
+  if (toggleBtn) toggleBtn.textContent = isLight ? "☀️ Light" : "🌙 Dark";
+  const cfgTema = document.getElementById('cfgTema');
+  if (cfgTema) cfgTema.checked = isLight;
+}
+
+function alternarTemaConfig() {
+  alternarTema();
+}
+
+if (toggleBtn) toggleBtn.addEventListener("click", alternarTema);
+
+document.addEventListener('keydown', (e) => {
+  // Enter no campo de erros registra o bloco
+  if (e.key === 'Enter' && document.activeElement.id === 'erros') {
+    registrarBloco();
+  }
+  // Ctrl+1..7 para navegar nas abas
+  if (e.ctrlKey && e.key >= '1' && e.key <= '7') {
+    const abas = ['desempenho','metas','revisoes','agenda','pomodoro','dashboard','configuracoes'];
+    const idx  = parseInt(e.key) - 1;
+    const tabs = document.querySelectorAll('.tab');
+    if (abas[idx] && tabs[idx]) mostrarPainel(abas[idx], tabs[idx]);
+    e.preventDefault();
+  }
+});
+
 document.addEventListener("DOMContentLoaded", () => {
   carregarDados();
+  aplicarTemaSalvo();
   detectarTrocaDeSemanaEFechar();
   gerarRevisoesInteligentesAutomaticamente();
 
@@ -1019,41 +1183,10 @@ document.addEventListener("DOMContentLoaded", () => {
   renderizarGrade();
   renderizarProximasRevisoes();
   pomoDefinirEtapa("foco");
+  atualizarDatalist();
+  atualizarPomoMaterias();
+  atualizarPomoSessoes();
+  atualizarInfoSemana();
+
+  document.getElementById('streakCount').textContent = streakDias;
 });
-
-const toggleBtn = document.getElementById("toggleTheme");
-
-function aplicarTemaSalvo() {
-  const tema = localStorage.getItem("tema");
-
-  if (tema === "light") {
-    document.body.classList.add("light-mode");
-  }
-}
-
-function alternarTema() {
-  document.body.classList.toggle("light-mode");
-
-  if (document.body.classList.contains("light-mode")) {
-    localStorage.setItem("tema", "light");
-    toggleBtn.textContent = "🌙 Dark";
-  } else {
-    localStorage.setItem("tema", "dark");
-    toggleBtn.textContent = "☀️ Light";
-  }
-}
-
-toggleBtn.addEventListener("click", alternarTema);
-
-aplicarTemaSalvo();
-
-function aplicarTemaSalvo() {
-  const tema = localStorage.getItem("tema");
-
-  if (tema === "light") {
-    document.body.classList.add("light-mode");
-    toggleBtn.textContent = "🌙 Dark";
-  } else {
-    toggleBtn.textContent = "☀️ Light";
-  }
-}
