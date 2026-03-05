@@ -7,7 +7,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css" />
+
 </head>
 <body>
 
@@ -25,13 +26,26 @@
 </header>
 
 <div class="tabs">
-  <button class="tab active" onclick="mostrarPainel('desempenho', this)">📊 Desempenho</button>
-  <button class="tab" onclick="mostrarPainel('metas', this)">🎯 Metas</button>
-  <button class="tab" onclick="mostrarPainel('revisoes', this)">🔁 Revisões</button>
-  <button class="tab" onclick="mostrarPainel('agenda', this)">📅 Agenda</button>
-  <button class="tab" onclick="mostrarPainel('pomodoro', this)">⏱ Pomodoro</button>
-  <button class="tab" onclick="mostrarPainel('dashboard', this)">📈 Dashboard</button>
-  <button class="tab" onclick="mostrarPainel('configuracoes', this)">⚙ Configurações</button>
+  <button class="tab active" data-painel="desempenho" onclick="mostrarPainel('desempenho', this)">📊 Desempenho</button>
+  <button class="tab" data-painel="metas" onclick="mostrarPainel('metas', this)">🎯 Metas</button>
+  <button class="tab" data-painel="revisoes" onclick="mostrarPainel('revisoes', this)">🔁 Revisões</button>
+  <button class="tab" data-painel="agenda" onclick="mostrarPainel('agenda', this)">📅 Agenda</button>
+  <button class="tab" data-painel="pomodoro" onclick="mostrarPainel('pomodoro', this)">⏱ Pomodoro</button>
+  <button class="tab" data-painel="dashboard" onclick="mostrarPainel('dashboard', this)">📈 Dashboard</button>
+  <button class="tab" data-painel="configuracoes" onclick="mostrarPainel('configuracoes', this)">⚙ Configurações</button>
+</div>
+
+<div class="detail-panel-overlay" id="detailOverlay" onclick="fecharDetalheMateria()"></div>
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-panel-header">
+    <div class="detail-panel-top">
+      <div class="detail-panel-name" id="dpName">—</div>
+      <button class="detail-panel-close" onclick="fecharDetalheMateria()">✕</button>
+    </div>
+    <span class="detail-panel-badge" id="dpBadge">—</span>
+  </div>
+  <div class="detail-panel-body" id="dpBody"></div>
+  <div class="dp-actions" id="dpActions"></div>
 </div>
 
 <main>
@@ -65,6 +79,12 @@
         <div class="card-title-icon icon-teal">📈</div>
         Análise por Matéria
       </div>
+      <div class="materia-filter-bar">
+        <button class="mfb-btn active" data-filter="todas" onclick="filtrarMaterias('todas', this)">Todas</button>
+        <button class="mfb-btn mfb-red"    data-filter="alta"   onclick="filtrarMaterias('alta', this)">🔴 Alta prioridade</button>
+        <button class="mfb-btn mfb-yellow" data-filter="media"  onclick="filtrarMaterias('media', this)">🟡 Média prioridade</button>
+        <button class="mfb-btn mfb-green"  data-filter="baixa"  onclick="filtrarMaterias('baixa', this)">🟢 Baixa prioridade</button>
+      </div>
       <div id="tabelaDesempenho">
         <div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nenhuma matéria registrada ainda.</div></div>
       </div>
@@ -93,12 +113,8 @@
   </div>
 
   <div id="panel-metas" class="panel">
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-purple">🎯</div>
-        Metas Semanais
-      </div>
+      <div class="card-title"><div class="card-title-icon icon-purple">🎯</div>Metas Semanais</div>
       <div id="semanaInfoMetas" class="semana-info">📅 Carregando...</div>
       <div class="btn-group">
         <button class="btn btn-primary" onclick="gerarMetasAutomaticas()">⚡ Gerar Automáticas</button>
@@ -108,36 +124,23 @@
         <div class="empty"><div class="empty-icon">🎯</div><div class="empty-text">Gere metas ou registre questões para começar.</div></div>
       </div>
     </div>
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-yellow">📂</div>
-        Histórico de Semanas
-      </div>
+      <div class="card-title"><div class="card-title-icon icon-yellow">📂</div>Histórico de Semanas</div>
       <div id="historicoMetas">
         <div class="empty"><div class="empty-icon">📂</div><div class="empty-text">Nenhum histórico ainda. Clique em "Fechar Semana".</div></div>
       </div>
     </div>
-
   </div>
 
   <div id="panel-revisoes" class="panel">
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-pink">🔁</div>
-        Próximas Revisões
-      </div>
+      <div class="card-title"><div class="card-title-icon icon-pink">🔁</div>Próximas Revisões</div>
       <div id="gradeRevisoesInteligentes">
         <div class="empty"><div class="empty-icon">📅</div><div class="empty-text">Nenhuma revisão agendada.</div></div>
       </div>
     </div>
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-teal">✅</div>
-        Histórico de Revisões
-      </div>
+      <div class="card-title"><div class="card-title-icon icon-teal">✅</div>Histórico de Revisões</div>
       <div class="filter-row">
         <span class="filter-label">Filtrar:</span>
         <select id="filtroMateriaHistorico" onchange="atualizarFiltroHistorico()">
@@ -148,16 +151,11 @@
         <div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhuma revisão concluída ainda.</div></div>
       </div>
     </div>
-
   </div>
 
   <div id="panel-agenda" class="panel">
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-purple">📅</div>
-        Agenda de Estudo
-      </div>
+      <div class="card-title"><div class="card-title-icon icon-purple">📅</div>Agenda de Estudo</div>
       <div class="btn-group">
         <button class="btn btn-primary" onclick="criarAgendaInteligente()">🗓 Gerar Agenda</button>
         <button class="btn btn-secondary" onclick="limparAgendaConcluida()">🧹 Limpar Concluídos</button>
@@ -166,36 +164,23 @@
         <div class="empty"><div class="empty-icon">📅</div><div class="empty-text">Gere a agenda para ver os eventos.</div></div>
       </div>
     </div>
-
   </div>
 
   <div id="panel-pomodoro" class="panel">
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-pink">⏱</div>
-        Timer Pomodoro
-      </div>
-
+      <div class="card-title"><div class="card-title-icon icon-pink">⏱</div>Timer Pomodoro</div>
       <div class="pomo-wrap">
         <div class="pomo-etapa" id="pomodoroStatus">FOCO</div>
         <div class="pomo-timer" id="timer">40:00</div>
         <div class="pomo-ciclos" id="pomoCiclosTexto">Ciclo 1 de 4</div>
-
         <div class="pomo-dots" id="pomoDots">
-          <div class="pomo-dot ativo"></div>
-          <div class="pomo-dot"></div>
-          <div class="pomo-dot"></div>
-          <div class="pomo-dot"></div>
+          <div class="pomo-dot ativo"></div><div class="pomo-dot"></div>
+          <div class="pomo-dot"></div><div class="pomo-dot"></div>
         </div>
-
         <div class="pomo-materia-select">
           <span>Estudando:</span>
-          <select id="pomoMateriaSelect">
-            <option value="">— Selecionar matéria —</option>
-          </select>
+          <select id="pomoMateriaSelect"><option value="">— Selecionar matéria —</option></select>
         </div>
-
         <div class="pomo-btns">
           <button class="btn btn-primary" onclick="pomodoroIniciar()">▶ Iniciar</button>
           <button class="btn btn-secondary" onclick="pomodoroPausar()">⏸ Pausar</button>
@@ -203,137 +188,71 @@
           <button class="btn btn-secondary" onclick="pomodoroReset()">↺ Reset</button>
         </div>
       </div>
-
       <div class="sub-card">
         <div class="sub-title">Configurações do Timer</div>
         <div class="input-row">
-          <div>
-            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Foco (min)</label>
-            <input type="number" id="cfgFoco" value="40" style="width:75px;" min="1" onchange="aplicarConfigPomo()">
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Pausa curta</label>
-            <input type="number" id="cfgCurta" value="5" style="width:75px;" min="1" onchange="aplicarConfigPomo()">
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Pausa longa</label>
-            <input type="number" id="cfgLonga" value="15" style="width:75px;" min="1" onchange="aplicarConfigPomo()">
-          </div>
+          <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Foco (min)</label><input type="number" id="cfgFoco" value="40" style="width:75px;" min="1" onchange="aplicarConfigPomo()"></div>
+          <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Pausa curta</label><input type="number" id="cfgCurta" value="5" style="width:75px;" min="1" onchange="aplicarConfigPomo()"></div>
+          <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Pausa longa</label><input type="number" id="cfgLonga" value="15" style="width:75px;" min="1" onchange="aplicarConfigPomo()"></div>
         </div>
       </div>
-
       <div class="sub-card">
         <div class="sub-title">Sessões de Hoje</div>
-        <div id="pomoSessoesHoje">
-          <div style="color:var(--muted);font-size:13px;">Nenhuma sessão concluída hoje.</div>
-        </div>
+        <div id="pomoSessoesHoje"><div style="color:var(--muted);font-size:13px;">Nenhuma sessão concluída hoje.</div></div>
       </div>
     </div>
-
   </div>
 
   <div id="panel-dashboard" class="panel">
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-purple">📈</div>
-        Dashboard Semanal
-      </div>
-
+      <div class="card-title"><div class="card-title-icon icon-purple">📈</div>Dashboard Semanal</div>
       <div class="charts-grid">
-        <div class="chart-box">
-          <div class="chart-label">📊 Questões Resolvidas esta semana</div>
-          <canvas id="graficoProgresso"></canvas>
-        </div>
-        <div class="chart-box">
-          <div class="chart-label">🎯 % da Meta Atingida</div>
-          <canvas id="graficoDesempenho"></canvas>
-        </div>
+        <div class="chart-box"><div class="chart-label">📊 Questões Resolvidas esta semana</div><canvas id="graficoProgresso"></canvas></div>
+        <div class="chart-box"><div class="chart-label">🎯 % da Meta Atingida</div><canvas id="graficoDesempenho"></canvas></div>
       </div>
     </div>
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-teal">🏆</div>
-        Aproveitamento por Matéria
-      </div>
-      <div class="chart-box" style="background:transparent;border:none;padding:0;">
-        <canvas id="graficoAproveitamento"></canvas>
-      </div>
+      <div class="card-title"><div class="card-title-icon icon-teal">🏆</div>Aproveitamento por Matéria</div>
+      <div class="chart-box" style="background:transparent;border:none;padding:0;"><canvas id="graficoAproveitamento"></canvas></div>
     </div>
-
   </div>
 
-   <div id="panel-configuracoes" class="panel">
-
+  <div id="panel-configuracoes" class="panel">
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-yellow">⚙️</div>
-        Preferências
-      </div>
-
+      <div class="card-title"><div class="card-title-icon icon-yellow">⚙️</div>Preferências</div>
       <div class="config-section">
         <div class="config-section-title">Aparência</div>
         <div class="config-row">
-          <div>
-            <div class="config-label">Tema escuro</div>
-            <div class="config-sublabel">Alterna entre modo claro e escuro</div>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" id="cfgTema" onchange="alternarTemaConfig()">
-            <span class="toggle-slider"></span>
-          </label>
+          <div><div class="config-label">Tema escuro</div><div class="config-sublabel">Alterna entre modo claro e escuro</div></div>
+          <label class="toggle"><input type="checkbox" id="cfgTema" onchange="alternarTemaConfig()"><span class="toggle-slider"></span></label>
         </div>
       </div>
-
       <div class="config-section">
         <div class="config-section-title">Notificações</div>
         <div class="config-row">
-          <div>
-            <div class="config-label">Sons do Pomodoro</div>
-            <div class="config-sublabel">Toca um som ao fim de cada ciclo</div>
-          </div>
-          <label class="toggle">
-            <input type="checkbox" id="cfgSom" checked>
-            <span class="toggle-slider"></span>
-          </label>
+          <div><div class="config-label">Sons do Pomodoro</div><div class="config-sublabel">Toca um som ao fim de cada ciclo</div></div>
+          <label class="toggle"><input type="checkbox" id="cfgSom" checked><span class="toggle-slider"></span></label>
         </div>
       </div>
-
       <div class="config-section">
         <div class="config-section-title">Dados</div>
         <div class="import-export-row">
           <button class="btn btn-secondary" onclick="exportarDados()">📤 Exportar Backup</button>
-          <label class="btn btn-secondary" style="cursor:pointer;">
-            📥 Importar Backup
-            <input type="file" accept=".json" onchange="importarDados(event)" style="display:none;">
-          </label>
+          <label class="btn btn-secondary" style="cursor:pointer;">📥 Importar Backup<input type="file" accept=".json" onchange="importarDados(event)" style="display:none;"></label>
         </div>
       </div>
     </div>
-
     <div class="card">
-      <div class="card-title">
-        <div class="card-title-icon icon-pink">⚠️</div>
-        Zona de Perigo
-      </div>
+      <div class="card-title"><div class="card-title-icon icon-pink">⚠️</div>Zona de Perigo</div>
       <div class="danger-zone">
-        <div class="danger-zone-text">
-          <h3>🧹 Resetar Planner</h3>
-          <p>Apaga todos os dados permanentemente. Esta ação não pode ser desfeita.</p>
-        </div>
+        <div class="danger-zone-text"><h3>🧹 Resetar Planner</h3><p>Apaga todos os dados permanentemente. Esta ação não pode ser desfeita.</p></div>
         <button class="btn btn-danger" onclick="resetarSistema()">Resetar Tudo</button>
       </div>
     </div>
-
   </div>
 
 </main>
-
 <script src="script.js"></script>
 </body>
 </html>
-
-
-
 
