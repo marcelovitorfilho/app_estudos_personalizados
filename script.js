@@ -1020,3 +1020,40 @@ document.addEventListener("DOMContentLoaded", () => {
   renderizarProximasRevisoes();
   pomoDefinirEtapa("foco");
 });
+
+const toggleBtn = document.getElementById("toggleTheme");
+
+function aplicarTemaSalvo() {
+  const tema = localStorage.getItem("tema");
+
+  if (tema === "light") {
+    document.body.classList.add("light-mode");
+  }
+}
+
+function alternarTema() {
+  document.body.classList.toggle("light-mode");
+
+  if (document.body.classList.contains("light-mode")) {
+    localStorage.setItem("tema", "light");
+    toggleBtn.textContent = "🌙 Dark";
+  } else {
+    localStorage.setItem("tema", "dark");
+    toggleBtn.textContent = "☀️ Light";
+  }
+}
+
+toggleBtn.addEventListener("click", alternarTema);
+
+aplicarTemaSalvo();
+
+function aplicarTemaSalvo() {
+  const tema = localStorage.getItem("tema");
+
+  if (tema === "light") {
+    document.body.classList.add("light-mode");
+    toggleBtn.textContent = "🌙 Dark";
+  } else {
+    toggleBtn.textContent = "☀️ Light";
+  }
+}
