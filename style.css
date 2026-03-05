@@ -17,6 +17,21 @@
   --radius-sm: 10px;
 }
 
+.light-mode {
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --surface2: #f0f1f7;
+  --surface3: #e6e8f2;
+  --border: rgba(0,0,0,0.08);
+  --text: #1a1a24;
+  --muted: #6b6b8a;
+
+  --accent: #6b5cff;
+  --accent2: #ff4d8d;
+  --accent3: #00c896;
+  --accent4: #ff9f40;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html { scroll-behavior: smooth; }
@@ -763,3 +778,4 @@ canvas { border-radius: 8px; max-height: 220px; }
   .perf-stats { grid-template-columns: repeat(3, 1fr); }
   .pomo-timer { font-size: 56px; }
 }
+
