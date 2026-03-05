@@ -6,7 +6,7 @@
 <title>Planner de Estudos</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -19,8 +19,8 @@
     <h1>Planner de Estudos</h1>
   </div>
   <div class="header-actions">
-    <button class="btn btn-secondary btn-sm" onclick="mostrarPainel('configuracoes')">⚙ Configurações</button>
-    <button id="toggleTheme" class="btn-secondary btn-sm">🌙 Tema</button>
+    <div class="streak-badge" id="streakBadge" title="Dias consecutivos de estudo">🔥 <span id="streakCount">0</span> dias</div>
+    <button id="toggleTheme" class="btn btn-secondary btn-sm">🌙 Tema</button>
   </div>
 </header>
 
@@ -31,7 +31,7 @@
   <button class="tab" onclick="mostrarPainel('agenda', this)">📅 Agenda</button>
   <button class="tab" onclick="mostrarPainel('pomodoro', this)">⏱ Pomodoro</button>
   <button class="tab" onclick="mostrarPainel('dashboard', this)">📈 Dashboard</button>
-  <button class="tab" onclick="mostrarPainel('configuracoes', this)">⚙ Config</button>
+  <button class="tab" onclick="mostrarPainel('configuracoes', this)">⚙ Configurações</button>
 </div>
 
 <main>
@@ -42,25 +42,27 @@
       <div class="stat-box"><div class="stat-box-val" id="statMaterias">0</div><div class="stat-box-lbl">Matérias</div></div>
       <div class="stat-box"><div class="stat-box-val" id="statAcertos">0</div><div class="stat-box-lbl">Acertos</div></div>
       <div class="stat-box"><div class="stat-box-val" id="statErros">0</div><div class="stat-box-lbl">Erros</div></div>
-      <div class="stat-box"><div class="stat-box-val" id="statMedia">—</div><div class="stat-box-lbl">Média Geral</div></div>
+      <div class="stat-box"><div class="stat-box-val" id="statMedia">—</div><div class="stat-box-lbl">Aproveitamento</div></div>
     </div>
 
     <div class="card">
       <div class="card-title">
         <div class="card-title-icon icon-purple">✏️</div>
-        Registrar Bloco de Questões
+        Registrar Questões
       </div>
       <div class="input-row">
-        <input type="text" id="materia" placeholder="Nome da matéria" style="flex:2; min-width:160px;">
-        <input type="number" id="acertos" placeholder="Acertos" style="width:100px;" min="0">
-        <input type="number" id="erros" placeholder="Erros" style="width:100px;" min="0">
+        <input type="text" id="materia" placeholder="Nome da matéria" style="flex:2; min-width:150px;" list="materiasList">
+        <datalist id="materiasList"></datalist>
+        <input type="number" id="acertos" placeholder="Acertos" style="width:95px;" min="0">
+        <input type="number" id="erros" placeholder="Erros" style="width:95px;" min="0">
         <button class="btn btn-primary" onclick="registrarBloco()">➕ Registrar</button>
       </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;">Atalho: <kbd class="kbd">Enter</kbd> no último campo</div>
     </div>
 
     <div class="card">
       <div class="card-title">
-        <div class="card-title-icon icon-green">📈</div>
+        <div class="card-title-icon icon-teal">📈</div>
         Análise por Matéria
       </div>
       <div id="tabelaDesempenho">
@@ -70,7 +72,7 @@
 
     <div class="card">
       <div class="card-title">
-        <div class="card-title-icon icon-orange">🔍</div>
+        <div class="card-title-icon icon-yellow">🔍</div>
         Diagnóstico Inteligente
       </div>
       <div id="diagnostico">
@@ -80,7 +82,7 @@
 
     <div class="card">
       <div class="card-title">
-        <div class="card-title-icon icon-green">✅</div>
+        <div class="card-title-icon icon-teal">✅</div>
         Matérias Concluídas
       </div>
       <div id="materiasConcluidas">
@@ -97,6 +99,7 @@
         <div class="card-title-icon icon-purple">🎯</div>
         Metas Semanais
       </div>
+      <div id="semanaInfoMetas" class="semana-info">📅 Carregando...</div>
       <div class="btn-group">
         <button class="btn btn-primary" onclick="gerarMetasAutomaticas()">⚡ Gerar Automáticas</button>
         <button class="btn btn-secondary" onclick="fecharSemanaAgora()">📌 Fechar Semana</button>
@@ -108,7 +111,7 @@
 
     <div class="card">
       <div class="card-title">
-        <div class="card-title-icon icon-orange">📂</div>
+        <div class="card-title-icon icon-yellow">📂</div>
         Histórico de Semanas
       </div>
       <div id="historicoMetas">
@@ -132,7 +135,7 @@
 
     <div class="card">
       <div class="card-title">
-        <div class="card-title-icon icon-green">✅</div>
+        <div class="card-title-icon icon-teal">✅</div>
         Histórico de Revisões
       </div>
       <div class="filter-row">
@@ -157,6 +160,7 @@
       </div>
       <div class="btn-group">
         <button class="btn btn-primary" onclick="criarAgendaInteligente()">🗓 Gerar Agenda</button>
+        <button class="btn btn-secondary" onclick="limparAgendaConcluida()">🧹 Limpar Concluídos</button>
       </div>
       <div id="grade">
         <div class="empty"><div class="empty-icon">📅</div><div class="empty-text">Gere a agenda para ver os eventos.</div></div>
@@ -185,6 +189,13 @@
           <div class="pomo-dot"></div>
         </div>
 
+        <div class="pomo-materia-select">
+          <span>Estudando:</span>
+          <select id="pomoMateriaSelect">
+            <option value="">— Selecionar matéria —</option>
+          </select>
+        </div>
+
         <div class="pomo-btns">
           <button class="btn btn-primary" onclick="pomodoroIniciar()">▶ Iniciar</button>
           <button class="btn btn-secondary" onclick="pomodoroPausar()">⏸ Pausar</button>
@@ -193,21 +204,28 @@
         </div>
       </div>
 
-      <div class="sub-card" style="margin-top:20px;">
+      <div class="sub-card">
         <div class="sub-title">Configurações do Timer</div>
         <div class="input-row">
           <div>
             <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Foco (min)</label>
-            <input type="number" id="cfgFoco" value="40" style="width:80px;" min="1" onchange="aplicarConfigPomo()">
+            <input type="number" id="cfgFoco" value="40" style="width:75px;" min="1" onchange="aplicarConfigPomo()">
           </div>
           <div>
-            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Pausa curta (min)</label>
-            <input type="number" id="cfgCurta" value="5" style="width:80px;" min="1" onchange="aplicarConfigPomo()">
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Pausa curta</label>
+            <input type="number" id="cfgCurta" value="5" style="width:75px;" min="1" onchange="aplicarConfigPomo()">
           </div>
           <div>
-            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Pausa longa (min)</label>
-            <input type="number" id="cfgLonga" value="15" style="width:80px;" min="1" onchange="aplicarConfigPomo()">
+            <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Pausa longa</label>
+            <input type="number" id="cfgLonga" value="15" style="width:75px;" min="1" onchange="aplicarConfigPomo()">
           </div>
+        </div>
+      </div>
+
+      <div class="sub-card">
+        <div class="sub-title">Sessões de Hoje</div>
+        <div id="pomoSessoesHoje">
+          <div style="color:var(--muted);font-size:13px;">Nenhuma sessão concluída hoje.</div>
         </div>
       </div>
     </div>
@@ -224,7 +242,7 @@
 
       <div class="charts-grid">
         <div class="chart-box">
-          <div class="chart-label">📊 Questões Resolvidas</div>
+          <div class="chart-label">📊 Questões Resolvidas esta semana</div>
           <canvas id="graficoProgresso"></canvas>
         </div>
         <div class="chart-box">
@@ -234,20 +252,75 @@
       </div>
     </div>
 
+    <div class="card">
+      <div class="card-title">
+        <div class="card-title-icon icon-teal">🏆</div>
+        Aproveitamento por Matéria
+      </div>
+      <div class="chart-box" style="background:transparent;border:none;padding:0;">
+        <canvas id="graficoAproveitamento"></canvas>
+      </div>
+    </div>
+
   </div>
 
-  <div id="panel-configuracoes" class="panel">
+   <div id="panel-configuracoes" class="panel">
 
     <div class="card">
       <div class="card-title">
-        <div class="card-title-icon icon-orange">⚙️</div>
-        Configurações Gerais
+        <div class="card-title-icon icon-yellow">⚙️</div>
+        Preferências
       </div>
 
+      <div class="config-section">
+        <div class="config-section-title">Aparência</div>
+        <div class="config-row">
+          <div>
+            <div class="config-label">Tema escuro</div>
+            <div class="config-sublabel">Alterna entre modo claro e escuro</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="cfgTema" onchange="alternarTemaConfig()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <div class="config-section-title">Notificações</div>
+        <div class="config-row">
+          <div>
+            <div class="config-label">Sons do Pomodoro</div>
+            <div class="config-sublabel">Toca um som ao fim de cada ciclo</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="cfgSom" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <div class="config-section-title">Dados</div>
+        <div class="import-export-row">
+          <button class="btn btn-secondary" onclick="exportarDados()">📤 Exportar Backup</button>
+          <label class="btn btn-secondary" style="cursor:pointer;">
+            📥 Importar Backup
+            <input type="file" accept=".json" onchange="importarDados(event)" style="display:none;">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <div class="card-title-icon icon-pink">⚠️</div>
+        Zona de Perigo
+      </div>
       <div class="danger-zone">
         <div class="danger-zone-text">
           <h3>🧹 Resetar Planner</h3>
-          <p>Apaga todos os dados permanentemente. Essa ação não pode ser desfeita.</p>
+          <p>Apaga todos os dados permanentemente. Esta ação não pode ser desfeita.</p>
         </div>
         <button class="btn btn-danger" onclick="resetarSistema()">Resetar Tudo</button>
       </div>
@@ -260,6 +333,7 @@
 <script src="script.js"></script>
 </body>
 </html>
+
 
 
 
