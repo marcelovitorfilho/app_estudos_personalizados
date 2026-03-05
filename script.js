@@ -15,21 +15,7 @@ let streakDias = 0;
 let ultimoDiaEstudo = null;
 let pomoSessoes = [];
 
-function mostrarPainel(nome, tabEl) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  const panel = document.getElementById('panel-' + nome);
-  if (panel) panel.classList.add('active');
-  if (tabEl) {
-    tabEl.classList.add('active');
-  } else {
-    document.querySelectorAll('.tab').forEach(t => {
-      if (t.getAttribute('onclick')?.includes(`'${nome}'`)) t.classList.add('active');
-    });
-  }
-  if (nome === 'dashboard') atualizarDashboard();
-  if (nome === 'pomodoro') atualizarPomoMaterias();
-}
+let filtroAtivoPrioridade = 'todas';
 
 function toast(msg, tipo = 'info') {
   const icons = { info: 'ℹ️', success: '✅', error: '❌', warning: '⚠️' };
@@ -327,6 +313,40 @@ function excluirMateria(nome) {
   toast(`"${nome}" excluída.`, 'info');
 }
 
+function mostrarPainel(nome, tabEl) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  const panel = document.getElementById('panel-' + nome);
+  if (panel) panel.classList.add('active');
+  if (tabEl && tabEl.classList.contains('tab')) {
+    tabEl.classList.add('active');
+  } else {
+    document.querySelectorAll('.tab').forEach(t => {
+      if (t.dataset.painel === nome) t.classList.add('active');
+    });
+  }
+  if (nome === 'dashboard') atualizarDashboard();
+  if (nome === 'pomodoro') atualizarPomoMaterias();
+}
+
+function filtrarMaterias(filtro, btn) {
+  filtroAtivoPrioridade = filtro;
+  document.querySelectorAll('.mfb-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  atualizarDesempenho();
+}
+
+function makePctRing(pct, size, strokeW, colorClass) {
+  const r = (size - strokeW) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle class="pc-pct-ring-bg" cx="${size/2}" cy="${size/2}" r="${r}" stroke-width="${strokeW}"/>
+    <circle class="pc-pct-ring-fill ${colorClass}" cx="${size/2}" cy="${size/2}" r="${r}" stroke-width="${strokeW}"
+      stroke-dasharray="${circ}" stroke-dashoffset="${offset}"/>
+  </svg>`;
+}
+
 function atualizarDesempenho() {
   const container   = document.getElementById("tabelaDesempenho");
   const diagnostico = document.getElementById("diagnostico");
@@ -344,39 +364,65 @@ function atualizarDesempenho() {
     const dados = materias[nome];
     const total = dados.totalAcertos + dados.totalErros;
     const pct   = total > 0 ? (dados.totalAcertos / total * 100) : 0;
-    return { nome, dados, pct, prioridade: calcularPrioridade(pct) };
+    return { nome, dados, pct, total, prioridade: calcularPrioridade(pct) };
   }).sort((a, b) => a.pct - b.pct);
 
-  container.innerHTML = lista.map(({ nome, dados, pct, prioridade }) => {
-    let fillClass, statusClasse, statusTexto;
-    if      (pct < 60) { fillClass = 'fill-red';    statusClasse = 'status-critico';   statusTexto = '⚠ Precisa reforçar'; }
-    else if (pct < 80) { fillClass = 'fill-yellow'; statusClasse = 'status-bom';       statusTexto = '↗ Desempenho moderado'; }
-    else               { fillClass = 'fill-green';  statusClasse = 'status-excelente'; statusTexto = '✔ Excelente domínio'; }
+  const counts = { todas: lista.length, alta: 0, media: 0, baixa: 0 };
+  lista.forEach(i => counts[i.prioridade]++);
+  document.querySelectorAll('.mfb-btn').forEach(btn => {
+    const f = btn.dataset.filter;
+    let countEl = btn.querySelector('.mfb-count');
+    if (!countEl) { countEl = document.createElement('span'); countEl.className = 'mfb-count'; btn.appendChild(countEl); }
+    countEl.textContent = counts[f] ?? '';
+  });
 
-    const total = dados.totalAcertos + dados.totalErros;
+  const listaFiltrada = filtroAtivoPrioridade === 'todas'
+    ? lista
+    : lista.filter(i => i.prioridade === filtroAtivoPrioridade);
+
+  if (!listaFiltrada.length) {
+    const labels = { alta: 'alta prioridade', media: 'média prioridade', baixa: 'baixa prioridade' };
+    container.innerHTML = `<div class="materias-empty-filter">🔍 Nenhuma matéria com ${labels[filtroAtivoPrioridade] || 'esse filtro'}.</div>`;
+  } else {
+    container.innerHTML = '<div class="materias-grid">' + listaFiltrada.map(({ nome, dados, pct, total, prioridade }) => {
+    let colorClass, ringClass, statusClass, statusTxt, pcClass;
+    if (pct < 60) {
+      colorClass = 'fill-red'; ringClass = 'ring-red'; statusClass = 'pc-status-red';
+      statusTxt = '⚠ Precisa reforçar'; pcClass = 'pc-red';
+    } else if (pct < 80) {
+      colorClass = 'fill-yellow'; ringClass = 'ring-yellow'; statusClass = 'pc-status-yellow';
+      statusTxt = '↗ Desempenho moderado'; pcClass = 'pc-yellow';
+    } else {
+      colorClass = 'fill-green'; ringClass = 'ring-green'; statusClass = 'pc-status-green';
+      statusTxt = '✔ Excelente domínio'; pcClass = 'pc-green';
+    }
+    const ring = makePctRing(pct, 48, 4, ringClass);
     return `
-      <div class="performance-card">
+      <div class="performance-card ${pcClass}" onclick="verDetalheMateria('${nome}')">
         <div class="performance-header">
           <span class="performance-name">${nome}</span>
-          <span class="badge badge-${prioridade}">Prioridade ${prioridade.toUpperCase()}</span>
+          <div class="pc-pct-ring">
+            ${ring}
+            <div class="pc-pct-label">${Math.round(pct)}%</div>
+          </div>
         </div>
-        <div class="perf-stats">
-          <div class="perf-stat stat-green"><strong>${dados.totalAcertos}</strong><small>Acertos</small></div>
-          <div class="perf-stat stat-red"><strong>${dados.totalErros}</strong><small>Erros</small></div>
-          <div class="perf-stat stat-purple"><strong>${pct.toFixed(1)}%</strong><small>Aproveit.</small></div>
+        <div class="pc-numbers">
+          <div class="pc-num pcn-green"><strong>${dados.totalAcertos}</strong><span>Acertos</span></div>
+          <div class="pc-num pcn-red"><strong>${dados.totalErros}</strong><span>Erros</span></div>
+          <div class="pc-num pcn-acc"><strong>${total}</strong><span>Total</span></div>
         </div>
-        <div class="progress-track">
-          <div class="progress-fill ${fillClass}" style="width:${pct}%"></div>
+        <div class="pc-bar-wrap">
+          <div class="progress-track"><div class="progress-fill ${colorClass}" style="width:${pct}%"></div></div>
         </div>
-        <div class="perf-status ${statusClasse}" style="margin-bottom:8px;">${statusTexto}</div>
-        <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Total: ${total} questões resolvidas</div>
-        <div class="card-actions">
-          <button class="btn btn-success btn-sm" onclick="concluirMateria('${nome}')">✔ Concluir</button>
-          <button class="btn btn-danger btn-sm"  onclick="excluirMateria('${nome}')">🗑 Excluir</button>
+        <div class="pc-footer ${statusClass}">
+          <div class="pc-status-dot"></div>
+          <span class="pc-status-label">${statusTxt}</span>
+          <span class="pc-detail-btn">Ver detalhes →</span>
         </div>
       </div>
     `;
-  }).join('');
+    }).join('') + '</div>';
+  }
 
   gerarDiagnostico(lista);
   atualizarStatsSummary();
@@ -387,24 +433,156 @@ function gerarDiagnostico(lista) {
   if (!container || !lista.length) return;
 
   const configs = {
-    alta:  { classe: 'diag-alta',  icone: '🔴', titulo: 'Desempenho Crítico',  plano: 'Revisar teoria imediatamente + resolver 20 questões diárias focando nos erros.' },
-    media: { classe: 'diag-media', icone: '🟡', titulo: 'Desempenho Moderado', plano: 'Aumentar volume de questões e revisar os principais pontos de erro.' },
-    baixa: { classe: 'diag-baixa', icone: '🟢', titulo: 'Bom Desempenho',      plano: 'Manter revisões periódicas e simulados para consolidar o domínio.' }
+    alta:  { classe: 'diag-alta',  icone: '🔴', desc: 'Crítico — revisar teoria imediatamente' },
+    media: { classe: 'diag-media', icone: '🟡', desc: 'Moderado — aumentar volume de questões' },
+    baixa: { classe: 'diag-baixa', icone: '🟢', desc: 'Bom — manter revisões periódicas' }
   };
 
-  container.innerHTML = [...lista].sort((a, b) => a.pct - b.pct).map(({ nome, pct, prioridade }) => {
-    const c = configs[prioridade];
-    return `
-      <div class="diag-card ${c.classe}">
-        <div class="diag-header">
-          <div class="diag-name"><span>${c.icone}</span>${nome}</div>
-          <div class="diag-pct">${pct.toFixed(1)}%</div>
+  container.innerHTML = '<div class="diag-list">' +
+    [...lista].sort((a, b) => a.pct - b.pct).map(({ nome, pct, prioridade }) => {
+      const c = configs[prioridade];
+      return `
+        <div class="diag-row ${c.classe}" onclick="verDetalheMateria('${nome}')">
+          <span class="diag-row-icon">${c.icone}</span>
+          <div class="diag-row-body">
+            <div class="diag-row-name">${nome}</div>
+            <div class="diag-row-desc">${c.desc}</div>
+          </div>
+          <div class="diag-row-pct">${pct.toFixed(1)}%</div>
         </div>
-        <div style="font-size:13.5px;font-weight:700;margin-bottom:4px;">${c.titulo}</div>
-        <div class="diag-plan">${c.plano}</div>
+      `;
+    }).join('') + '</div>';
+}
+
+function fecharDetalheMateria() {
+  document.getElementById('detailPanel')?.classList.remove('open');
+  document.getElementById('detailOverlay')?.classList.remove('open');
+  document.body.style.overflow = '';
+  document.querySelectorAll('.performance-card').forEach(c => c.classList.remove('selected'));
+}
+
+function verDetalheMateria(nome) {
+  const dados = materias[nome];
+  if (!dados) return;
+
+  const total = dados.totalAcertos + dados.totalErros;
+  const pct = total > 0 ? (dados.totalAcertos / total * 100) : 0;
+  const prioridade = calcularPrioridade(pct);
+  const metaAtual = metasPorMateria[nome];
+  const semana = obterSemanaAtual();
+  const progressoAtual = (progressoSemanal[semana] || {})[nome] || 0;
+  const metaPct = metaAtual > 0 ? Math.min((progressoAtual / metaAtual) * 100, 100) : 0;
+
+  let ringClass, fillClass, dpClass, prioLabel;
+  if (pct < 60)      { ringClass = 'ring-red';    fillClass = 'fill-red';    dpClass = 'dp-red';    prioLabel = '🔴 Prioridade Alta'; }
+  else if (pct < 80) { ringClass = 'ring-yellow'; fillClass = 'fill-yellow'; dpClass = 'dp-yellow'; prioLabel = '🟡 Prioridade Média'; }
+  else               { ringClass = 'ring-green';  fillClass = 'fill-green';  dpClass = 'dp-green';  prioLabel = '🟢 Bom Desempenho'; }
+
+  const r = 44, sw = 7, circ = 2 * Math.PI * r;
+  const ringHtml = `<svg width="100" height="100" viewBox="0 0 100 100">
+    <circle class="pc-pct-ring-bg" cx="50" cy="50" r="${r}" stroke-width="${sw}"/>
+    <circle class="pc-pct-ring-fill ${ringClass}" cx="50" cy="50" r="${r}" stroke-width="${sw}"
+      stroke-dasharray="${circ}" stroke-dashoffset="${circ - (pct/100)*circ}"/>
+  </svg>`;
+
+  const revisoesArr = revisoesInteligentes[nome] || [];
+  const proximas = revisoesArr.filter(r => !r.concluida).slice(0, 4);
+  const revisoesHtml = proximas.length
+    ? proximas.map(rv => `<div class="dp-rev-chip">📅 ${new Date(rv.data).toLocaleDateString('pt-BR')}</div>`).join('')
+    : '<span style="font-size:12.5px;color:var(--muted);">Nenhuma revisão agendada</span>';
+
+  const metaFillClass = metaPct >= 100 ? 'fill-green' : metaPct >= 50 ? 'fill-yellow' : 'fill-red';
+
+  document.getElementById('dpName').textContent = nome;
+  const badge = document.getElementById('dpBadge');
+  badge.textContent = prioLabel;
+  badge.className = `detail-panel-badge ${dpClass}`;
+
+  const insights = {
+    red:    { cls: 'dp-insight-red',    icon: '🔴', text: `<strong>${nome}</strong> está em zona crítica. Recomenda-se revisar a teoria base e resolver no mínimo <strong>20 questões diárias</strong>, focando nos erros mais frequentes.` },
+    yellow: { cls: 'dp-insight-yellow', icon: '🟡', text: `<strong>${nome}</strong> tem desempenho moderado. Aumente o volume de questões e dedique tempo extra aos <strong>pontos de maior dificuldade</strong>.` },
+    green:  { cls: 'dp-insight-green',  icon: '🟢', text: `<strong>${nome}</strong> está com bom desempenho! Mantenha revisões periódicas e faça <strong>simulados completos</strong> para consolidar o domínio.` },
+  };
+  const insightKey = pct < 60 ? 'red' : pct < 80 ? 'yellow' : 'green';
+  const ins = insights[insightKey];
+
+  document.getElementById('dpBody').innerHTML = `
+    <div class="dp-big-ring">
+      <div class="dp-ring-wrap">
+        ${ringHtml}
+        <div class="dp-ring-center">
+          <div class="dp-ring-pct" style="color:${pct<60?'var(--danger)':pct<80?'var(--warning)':'var(--success)'}">${pct.toFixed(1)}%</div>
+          <div class="dp-ring-lbl">Aproveit.</div>
+        </div>
       </div>
-    `;
-  }).join('');
+      <div class="dp-ring-stats">
+        <div class="dp-ring-stat">
+          <div class="dp-ring-stat-dot" style="background:var(--success)"></div>
+          <div class="dp-ring-stat-val" style="color:var(--success)">${dados.totalAcertos}</div>
+          <div class="dp-ring-stat-lbl">Acertos</div>
+        </div>
+        <div class="dp-ring-stat">
+          <div class="dp-ring-stat-dot" style="background:var(--danger)"></div>
+          <div class="dp-ring-stat-val" style="color:var(--danger)">${dados.totalErros}</div>
+          <div class="dp-ring-stat-lbl">Erros</div>
+        </div>
+        <div class="dp-ring-stat">
+          <div class="dp-ring-stat-dot" style="background:var(--muted)"></div>
+          <div class="dp-ring-stat-val" style="color:var(--text-dim)">${total}</div>
+          <div class="dp-ring-stat-lbl">Total</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dp-section">
+      <div class="dp-section-title">Análise</div>
+      <div class="dp-insight ${ins.cls}">${ins.icon} ${ins.text}</div>
+    </div>
+
+    <div class="dp-section">
+      <div class="dp-section-title">Aproveitamento</div>
+      <div class="dp-bar-wrap">
+        <div class="dp-bar-label">
+          <span>${dados.totalAcertos} acertos de ${total} questões</span>
+          <span style="font-weight:700;color:${pct<60?'var(--danger)':pct<80?'var(--warning)':'var(--success)'}">${pct.toFixed(1)}%</span>
+        </div>
+        <div class="dp-bar-track"><div class="dp-bar-fill ${fillClass}" style="width:${pct}%"></div></div>
+        <div class="dp-bar-sub">${pct < 60 ? '⚠ Abaixo do mínimo recomendado (60%)' : pct < 80 ? '↗ Dentro da faixa de melhoria (60–80%)' : '✔ Acima da meta ideal (80%+)'}</div>
+      </div>
+    </div>
+
+    ${metaAtual ? `
+    <div class="dp-section">
+      <div class="dp-section-title">Meta Semanal</div>
+      <div class="dp-bar-wrap">
+        <div class="dp-bar-label">
+          <span>${progressoAtual} de ${metaAtual} questões esta semana</span>
+          <span style="font-weight:700">${metaPct.toFixed(0)}%</span>
+        </div>
+        <div class="dp-bar-track"><div class="dp-bar-fill ${metaFillClass}" style="width:${metaPct}%"></div></div>
+        <div class="dp-bar-sub">${metaPct >= 100 ? '✔ Meta da semana atingida!' : `Faltam ${metaAtual - progressoAtual} questões para bater a meta`}</div>
+      </div>
+    </div>` : ''}
+
+    <div class="dp-section">
+      <div class="dp-section-title">Próximas Revisões</div>
+      <div class="dp-rev-chips">${revisoesHtml}</div>
+    </div>
+  `;
+
+  document.getElementById('dpActions').innerHTML = `
+    <button class="btn btn-success" style="flex:1" onclick="concluirMateria('${nome}'); fecharDetalheMateria()">✔ Concluir</button>
+    <button class="btn btn-danger"  style="flex:1" onclick="excluirMateria('${nome}'); fecharDetalheMateria()">🗑 Excluir</button>
+  `;
+
+  document.querySelectorAll('.performance-card').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('.performance-card').forEach(c => {
+    if (c.querySelector('.performance-name')?.textContent === nome) c.classList.add('selected');
+  });
+
+  document.getElementById('detailPanel').classList.add('open');
+  document.getElementById('detailOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
 }
 
 function concluirMateria(nome) {
@@ -1157,12 +1335,10 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && document.activeElement.id === 'erros') {
     registrarBloco();
   }
-  // Ctrl+1..7 para navegar nas abas
   if (e.ctrlKey && e.key >= '1' && e.key <= '7') {
     const abas = ['desempenho','metas','revisoes','agenda','pomodoro','dashboard','configuracoes'];
     const idx  = parseInt(e.key) - 1;
-    const tabs = document.querySelectorAll('.tab');
-    if (abas[idx] && tabs[idx]) mostrarPainel(abas[idx], tabs[idx]);
+    if (abas[idx]) mostrarPainel(abas[idx]);
     e.preventDefault();
   }
 });
