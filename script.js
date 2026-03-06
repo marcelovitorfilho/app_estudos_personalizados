@@ -2,9 +2,7 @@ let agendaRevisoes = [];
 let materiasConcluidas = {};
 let historicoRevisoesInteligentes = {};
 let materias = {};
-let revisoesGeradasPorMateria = {};
 const QUESTOES_POR_REVISAO = 20;
-let revisoesInteligentes = {};
 let historicoExpandido = false;
 let filtroMateriaHistorico = "todas";
 let metasPorMateria = {};
@@ -16,6 +14,9 @@ let ultimoDiaEstudo = null;
 let pomoSessoes = [];
 
 let filtroAtivoPrioridade = 'todas';
+let agendaView          = 'lista'; // 'lista' | 'semana'
+let agendaSemanaOffset  = 0;
+let agendaFiltroMateria = 'todas';
 
 function toast(msg, tipo = 'info') {
   const icons = { info: 'ℹ️', success: '✅', error: '❌', warning: '⚠️' };
@@ -281,7 +282,7 @@ function registrarBloco() {
 
   if (metasPorMateria[nome] === undefined) metasPorMateria[nome] = metaAutomatica(nome);
 
-  gerarRevisoesExtrasPorVolume(nome);
+  gerarEventosMateria(nome);
   registrarProgressoSemanal(nome, acertos + erros);
   atualizarStreak();
   atualizarDatalist();
@@ -291,7 +292,6 @@ function registrarBloco() {
   salvarDados();
   atualizarDashboard();
   renderizarGrade();
-  gerarESalvarRevisoes(nome);
   renderizarProximasRevisoes();
   atualizarStatsSummary();
   atualizarPomoMaterias();
@@ -303,8 +303,6 @@ function excluirMateria(nome) {
   if (!confirm(`Deseja excluir completamente "${nome}"?`)) return;
   delete materias[nome];
   delete metasPorMateria[nome];
-  delete revisoesInteligentes[nome];
-  delete revisoesGeradasPorMateria[nome];
   agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
   salvarDados();
   atualizarDesempenho(); atualizarMetasVisuais(); atualizarDashboard();
@@ -485,8 +483,11 @@ function verDetalheMateria(nome) {
       stroke-dasharray="${circ}" stroke-dashoffset="${circ - (pct/100)*circ}"/>
   </svg>`;
 
-  const revisoesArr = revisoesInteligentes[nome] || [];
-  const proximas = revisoesArr.filter(r => !r.concluida).slice(0, 4);
+  const revisoesArr = agendaRevisoes
+    .filter(ev => ev.materia === nome && ev.tipo === 'Revisão' && !ev.concluido)
+    .sort((a, b) => new Date(a.data) - new Date(b.data))
+    .slice(0, 4);
+  const proximas = revisoesArr;
   const revisoesHtml = proximas.length
     ? proximas.map(rv => `<div class="dp-rev-chip">📅 ${new Date(rv.data).toLocaleDateString('pt-BR')}</div>`).join('')
     : '<span style="font-size:12.5px;color:var(--muted);">Nenhuma revisão agendada</span>';
@@ -591,8 +592,6 @@ function concluirMateria(nome) {
   materiasConcluidas[nome] = { dados: materias[nome], dataConclusao: new Date().toISOString() };
   delete materias[nome];
   delete metasPorMateria[nome];
-  delete revisoesInteligentes[nome];
-  delete revisoesGeradasPorMateria[nome];
   agendaRevisoes = agendaRevisoes.filter(ev => ev.materia !== nome);
   salvarDados();
   atualizarDesempenho(); atualizarMetasVisuais(); atualizarDashboard();
@@ -627,250 +626,104 @@ function renderizarMateriasConcluidas() {
   }).join('');
 }
 
-function gerarESalvarRevisoes(nome) {
-  if (revisoesInteligentes[nome]?.length > 0) return;
+const MAX_MATERIAS_POR_DIA = 4;
+
+function calcularIntervaloRevisao(prioridade, ordem) {
+ const base = prioridade === 'alta' ? 4 : prioridade === 'media' ? 12 : 28;
+  return Math.round(base * (ordem === 1 ? 1 : 2.5));
+}
+
+function eventosAtivosDeMateria(nome) {
+  return agendaRevisoes.filter(ev => ev.materia === nome && !ev.concluido);
+}
+
+function contarMateriasNoDia(dataStr) {
+  return [...new Set(
+    agendaRevisoes
+      .filter(ev => !ev.concluido && new Date(ev.data).toISOString().split('T')[0] === dataStr)
+      .map(ev => ev.materia)
+  )].length;
+}
+
+function proximoDiaDisponivel(dataBase, nome) {
+  let d = new Date(dataBase);
+  for (let i = 0; i < 60; i++) {
+    const key = d.toISOString().split('T')[0];
+    const jaTemMateria = agendaRevisoes.some(ev =>
+      new Date(ev.data).toISOString().split('T')[0] === key && ev.materia === nome
+    );
+    if (!jaTemMateria && contarMateriasNoDia(key) < MAX_MATERIAS_POR_DIA) return new Date(d);
+    d.setDate(d.getDate() + 1);
+  }
+  return new Date(dataBase); 
+}
+
+function gerarEventosMateria(nome) {
   const dados = materias[nome];
-  if (!dados) return;
+  if (!dados) return false;
   const total = dados.totalAcertos + dados.totalErros;
-  if (total === 0) return;
+  if (total === 0) return false;
+  if (eventosAtivosDeMateria(nome).length > 0) return false;
 
   const pct        = (dados.totalAcertos / total) * 100;
   const prioridade = calcularPrioridade(pct);
-  const ranges     = { alta: [3, 7], media: [10, 15], baixa: [30, 45] };
-  const [min, max] = ranges[prioridade];
+  const hoje       = new Date(); hoje.setHours(12, 0, 0, 0);
+  const durEstudo  = prioridade === 'alta' ? 60 : 40;
 
-  const hoje = new Date();
-  const dias1 = Math.floor(Math.random() * (max - min + 1)) + min;
-  const dias2 = Math.floor(Math.random() * (max - min + 1)) + min;
-
-  const d1 = new Date(hoje); d1.setDate(hoje.getDate() + dias1);
-  const d2 = new Date(d1);   d2.setDate(d1.getDate()   + dias2);
-
-  revisoesInteligentes[nome] = [
-    { data: d1.toISOString(), concluida: false },
-    { data: d2.toISOString(), concluida: false }
-  ];
-  salvarDados();
-}
-
-function gerarRevisoesInteligentesAutomaticamente() {
-  for (let nome in materias) {
-    const dados = materias[nome];
-    const total = (dados.totalAcertos || 0) + (dados.totalErros || 0);
-    if (total === 0) continue;
-    if (!revisoesInteligentes[nome] || revisoesInteligentes[nome].length === 0) {
-      gerarESalvarRevisoes(nome);
-    }
-  }
-}
-
-function renderizarProximasRevisoes() {
-  const container = document.getElementById("gradeRevisoesInteligentes");
-  if (!container) return;
-
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  let lista = [];
-
-  for (let nome in revisoesInteligentes) {
-    revisoesInteligentes[nome].forEach((rev, index) => {
-      const dataObj = new Date(rev.data); dataObj.setHours(0, 0, 0, 0);
-      let status = 'futura';
-      if (!rev.concluida) {
-        if      (dataObj < hoje)                            status = 'atrasada';
-        else if (dataObj.getTime() === hoje.getTime()) status = 'hoje';
-      }
-      lista.push({ materia: nome, data: new Date(rev.data), concluida: rev.concluida, status, index });
-    });
-  }
-
-  lista.sort((a, b) => a.data - b.data);
-
-  if (!lista.length) {
-    container.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><div class="empty-text">Nenhuma revisão agendada.</div></div>';
-    return;
-  }
-
-  const tagLabels = { atrasada: 'Atrasada', hoje: 'Hoje', futura: 'Agendada' };
-
-  container.innerHTML = lista.map(item => `
-    <div class="rev-card rev-${item.status} ${item.concluida ? 'rev-feita' : ''}">
-      <div class="rev-info">
-        <div class="rev-name">${item.materia}</div>
-        <div class="rev-date">📅 ${item.data.toLocaleDateString("pt-BR")}</div>
-      </div>
-      <span class="rev-tag tag-${item.status}">${tagLabels[item.status]}</span>
-      <div class="rev-btns">
-        <button class="btn btn-success btn-sm" onclick="marcarRevisaoInteligente('${item.materia}', ${item.index})">✔ Concluir</button>
-        <button class="btn btn-secondary btn-sm" onclick="recalcularRevisoes('${item.materia}')" title="Recalcular">🔁</button>
-      </div>
-    </div>
-  `).join('');
-}
-
-function marcarRevisaoInteligente(nome, index) {
-  const revisao = revisoesInteligentes[nome]?.[index];
-  if (!revisao) return;
-  if (!historicoRevisoesInteligentes[nome]) historicoRevisoesInteligentes[nome] = [];
-  historicoRevisoesInteligentes[nome].push({
-    dataOriginal:  revisao.data,
-    dataConclusao: new Date().toISOString()
-  });
-  revisoesInteligentes[nome].splice(index, 1);
-  if (!revisoesInteligentes[nome].length) delete revisoesInteligentes[nome];
-  salvarDados();
-  renderizarProximasRevisoes();
-  renderizarHistoricoRevisoesInteligentes();
-  toast('Revisão concluída! ✅', 'success');
-}
-
-function renderizarHistoricoRevisoesInteligentes() {
-  const container = document.getElementById("historicoRevisoesInteligentes");
-  if (!container) return;
-
-  let lista = [];
-  for (let nome in historicoRevisoesInteligentes) {
-    historicoRevisoesInteligentes[nome].forEach((item, index) => {
-      lista.push({
-        materia: nome, indexOriginal: index,
-        dataOriginal:  new Date(item.dataOriginal),
-        dataConclusao: new Date(item.dataConclusao)
-      });
-    });
-  }
-
-  if (filtroMateriaHistorico !== 'todas') {
-    lista = lista.filter(i => i.materia === filtroMateriaHistorico);
-  }
-
-  lista.sort((a, b) => b.dataConclusao - a.dataConclusao);
-
-  if (!lista.length) {
-    container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhuma revisão concluída ainda.</div></div>';
-    atualizarOpcoesFiltroHistorico(); return;
-  }
-
-  const limite = historicoExpandido ? lista.length : 5;
-
-  container.innerHTML = `<div style="margin-bottom:9px;color:var(--muted);font-size:12.5px;">Mostrando ${Math.min(limite, lista.length)} de ${lista.length}</div>`;
-
-  container.innerHTML += lista.slice(0, limite).map(item => `
-    <div class="hist-card">
-      <div class="hist-name">${item.materia}</div>
-      <div class="hist-dates">
-        📅 Prevista: ${item.dataOriginal.toLocaleDateString("pt-BR")}<br>
-        ✅ Concluída: ${item.dataConclusao.toLocaleDateString("pt-BR")}
-      </div>
-      <button class="btn btn-secondary btn-sm" style="margin-top:9px;" onclick="desconcluirRevisao('${item.materia}', ${item.indexOriginal})">↩ Desfazer</button>
-    </div>
-  `).join('');
-
-  if (lista.length > 5) {
-    container.innerHTML += `
-      <div style="text-align:center;margin-top:10px;">
-        <button class="btn btn-secondary" onclick="toggleHistorico()">
-          ${historicoExpandido ? '▲ Ver menos' : '▼ Ver mais'}
-        </button>
-      </div>
-    `;
-  }
-
-  atualizarOpcoesFiltroHistorico();
-}
-
-function atualizarOpcoesFiltroHistorico() {
-  const select = document.getElementById("filtroMateriaHistorico");
-  if (!select) return;
-  const materiasUnicas = Object.keys(historicoRevisoesInteligentes);
-  select.innerHTML = `<option value="todas">Todas as matérias</option>`;
-  materiasUnicas.forEach(nome => { select.innerHTML += `<option value="${nome}">${nome}</option>`; });
-  select.value = filtroMateriaHistorico;
-}
-
-function atualizarFiltroHistorico() {
-  filtroMateriaHistorico = document.getElementById("filtroMateriaHistorico").value;
-  historicoExpandido = false;
-  renderizarHistoricoRevisoesInteligentes();
-}
-
-function toggleHistorico() {
-  historicoExpandido = !historicoExpandido;
-  renderizarHistoricoRevisoesInteligentes();
-}
-
-function desconcluirRevisao(nome, index) {
-  const item = historicoRevisoesInteligentes[nome]?.[index];
-  if (!item) return;
-  if (!revisoesInteligentes[nome]) revisoesInteligentes[nome] = [];
-  revisoesInteligentes[nome].push({ data: item.dataOriginal, concluida: false });
-  historicoRevisoesInteligentes[nome].splice(index, 1);
-  if (!historicoRevisoesInteligentes[nome].length) delete historicoRevisoesInteligentes[nome];
-  salvarDados(); renderizarProximasRevisoes(); renderizarHistoricoRevisoesInteligentes();
-  toast('Revisão restaurada.', 'info');
-}
-
-function recalcularRevisoes(nome) {
-  if (!materias[nome]) return;
-  if (!confirm(`Recalcular revisões de "${nome}"?`)) return;
-  delete revisoesInteligentes[nome];
-  gerarESalvarRevisoes(nome);
-  salvarDados(); renderizarProximasRevisoes();
-  toast('Revisões recalculadas!', 'success');
-}
-
-function criarRevisaoSeNaoExiste(nome, prioridade, dataObj) {
-  const existe = agendaRevisoes.some(ev =>
-    ev.materia === nome && ev.tipo === "Revisão" &&
-    new Date(ev.data).toDateString() === dataObj.toDateString()
-  );
-  if (existe) return false;
+  const diaEstudo = proximoDiaDisponivel(hoje, nome);
   agendaRevisoes.push({
-    id: crypto.randomUUID(), data: dataObj.toISOString(),
-    tipo: "Revisão", materia: nome, duracao: 30,
-    prioridade, concluido: false, reagendamentos: 0
+    id: crypto.randomUUID(),
+    data: diaEstudo.toISOString(),
+    tipo: 'Estudo',
+    materia: nome,
+    duracao: durEstudo,
+    prioridade,
+    concluido: false,
+    reagendamentos: 0
   });
+
+  const baseRev = new Date(diaEstudo);
+  for (let ordem = 1; ordem <= 2; ordem++) {
+    const offset = calcularIntervaloRevisao(prioridade, ordem);
+    const alvo   = new Date(baseRev);
+    alvo.setDate(baseRev.getDate() + offset);
+    const dia = proximoDiaDisponivel(alvo, nome);
+    agendaRevisoes.push({
+      id: crypto.randomUUID(),
+      data: dia.toISOString(),
+      tipo: 'Revisão',
+      materia: nome,
+      duracao: 30,
+      prioridade,
+      concluido: false,
+      reagendamentos: 0
+    });
+  }
+
   return true;
 }
 
-function criarAgendaInteligente() {
-  const hoje        = new Date();
-  const limiteFinal = new Date(); limiteFinal.setMonth(limiteFinal.getMonth() + 3);
-  agendaRevisoes = agendaRevisoes.filter(ev => new Date(ev.data) >= hoje);
-
-  for (let nome in materias) {
-    const dados = materias[nome];
-    const total = dados.totalAcertos + dados.totalErros;
-    if (total === 0) continue;
-    const pct          = (dados.totalAcertos / total) * 100;
-    const prioridade   = calcularPrioridade(pct);
-    const duracaoEstudo = prioridade === "alta" ? 60 : 40;
-
-    const jaExiste = agendaRevisoes.some(ev =>
-      ev.tipo === "Estudo" && ev.materia === nome &&
-      new Date(ev.data).toDateString() === hoje.toDateString()
-    );
-
-    if (!jaExiste) {
-      agendaRevisoes.push({
-        id: crypto.randomUUID(), data: hoje.toISOString(),
-        tipo: "Estudo", materia: nome, duracao: duracaoEstudo,
-        prioridade, concluido: false, reagendamentos: 0
-      });
-    }
-
-    let dataRevisao = new Date(hoje);
-    while (dataRevisao < limiteFinal) {
-      const intervalo = prioridade === "alta"  ? 3  + Math.floor(Math.random() * 5)
-                      : prioridade === "media" ? 10 + Math.floor(Math.random() * 6)
-                      :                         30 + Math.floor(Math.random() * 16);
-      dataRevisao = new Date(dataRevisao);
-      dataRevisao.setDate(dataRevisao.getDate() + intervalo);
-      if (dataRevisao > limiteFinal) break;
-      criarRevisaoSeNaoExiste(nome, prioridade, dataRevisao);
-    }
+function gerarEventosTodasMaterias() {
+  let criou = false;
+  for (const nome in materias) {
+    if (gerarEventosMateria(nome)) criou = true;
   }
+  return criou;
+}
 
-  salvarDados(); renderizarGrade();
-  toast('Agenda gerada!', 'success');
+function criarAgendaInteligente() {
+  migrarAgendaRevisoes();
+  const criou      = gerarEventosTodasMaterias();
+  const ativos     = agendaRevisoes.filter(ev => !ev.concluido);
+  const totalDias  = new Set(ativos.map(ev => new Date(ev.data).toISOString().split('T')[0])).size;
+  salvarDados(); renderizarGrade(); renderizarProximasRevisoes(); atualizarFiltroMateriaAgenda();
+  if (Object.keys(materias).length === 0) {
+    toast('Registre matérias antes de gerar a agenda.', 'warning');
+  } else if (!criou) {
+    toast(`Agenda já atualizada — ${ativos.length} evento(s) ativo(s). Conclua os atuais para gerar o próximo ciclo.`, 'info');
+  } else {
+    toast(`Agenda gerada! ${ativos.length} evento(s) em ${totalDias} dia(s) — 1 estudo + 2 revisões por matéria ✅`, 'success');
+  }
 }
 
 function limparAgendaConcluida() {
@@ -881,8 +734,443 @@ function limparAgendaConcluida() {
   toast(`${removidos} evento(s) concluído(s) removido(s).`, 'info');
 }
 
+function renderizarProximasRevisoes() {
+  const container = document.getElementById('gradeRevisoesInteligentes');
+  if (!container) return;
+
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const lista = agendaRevisoes
+    .filter(ev => ev.tipo === 'Revisão')
+    .map(ev => {
+      const d = new Date(ev.data); d.setHours(0, 0, 0, 0);
+      const status = ev.concluido ? 'concluida'
+                   : d < hoje    ? 'atrasada'
+                   : d.getTime() === hoje.getTime() ? 'hoje' : 'futura';
+      return { ev, d, status };
+    })
+    .sort((a, b) => a.d - b.d);
+
+  if (!lista.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><div class="empty-text">Nenhuma revisão agendada. Gere a agenda primeiro.</div></div>';
+    return;
+  }
+
+  const tagLabels = { atrasada: 'Atrasada', hoje: 'Hoje', futura: 'Agendada', concluida: 'Concluída' };
+
+  container.innerHTML = lista.map(({ ev, d, status }) => `
+    <div class="rev-card rev-${status} ${ev.concluido ? 'rev-feita' : ''}">
+      <div class="rev-info">
+        <div class="rev-name">${ev.materia}</div>
+        <div class="rev-date">📅 ${d.toLocaleDateString('pt-BR')}</div>
+      </div>
+      <span class="rev-tag tag-${status}">${tagLabels[status]}</span>
+      <div class="rev-btns">
+        ${!ev.concluido
+          ? `<button class="btn btn-success btn-sm" onclick="marcarRevisaoInteligente('${ev.id}')">✔ Concluir</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="desconcluirRevisaoAgenda('${ev.id}')">↩ Desfazer</button>`
+        }
+        <button class="btn btn-secondary btn-sm" onclick="recalcularRevisoes('${ev.materia}')" title="Recalcular">🔁</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function marcarRevisaoInteligente(id) {
+  const ev = agendaRevisoes.find(e => e.id === id);
+  if (!ev || ev.tipo !== 'Revisão') return;
+
+  ev.concluido = true;
+
+  if (!historicoRevisoesInteligentes[ev.materia]) historicoRevisoesInteligentes[ev.materia] = [];
+  historicoRevisoesInteligentes[ev.materia].push({
+    dataOriginal:  ev.data,
+    dataConclusao: new Date().toISOString()
+  });
+
+  const ativos = eventosAtivosDeMateria(ev.materia);
+  if (ativos.length === 0) {
+    gerarEventosMateria(ev.materia);
+    toast(`Ciclo de "${ev.materia}" concluído! Próximo ciclo gerado 🎯`, 'success');
+  } else {
+    toast('Revisão concluída! ✅', 'success');
+  }
+
+  salvarDados();
+  renderizarProximasRevisoes();
+  renderizarHistoricoRevisoesInteligentes();
+  renderizarGrade();
+}
+
+function desconcluirRevisaoAgenda(id) {
+  const ev = agendaRevisoes.find(e => e.id === id);
+  if (!ev) return;
+  ev.concluido = false;
+
+  const hist = historicoRevisoesInteligentes[ev.materia];
+  if (hist) {
+    const idx = hist.findIndex(h => h.dataOriginal === ev.data);
+    if (idx >= 0) hist.splice(idx, 1);
+    if (hist.length === 0) delete historicoRevisoesInteligentes[ev.materia];
+  }
+
+  salvarDados();
+  renderizarProximasRevisoes();
+  renderizarHistoricoRevisoesInteligentes();
+  renderizarGrade();
+  toast('Revisão restaurada.', 'info');
+}
+
+function recalcularRevisoes(nome) {
+  if (!materias[nome]) return;
+  if (!confirm(`Recalcular revisões de "${nome}"? Os eventos ativos serão removidos.`)) return;
+  agendaRevisoes = agendaRevisoes.filter(ev => !(ev.materia === nome && !ev.concluido));
+  gerarEventosMateria(nome);
+  salvarDados(); renderizarProximasRevisoes(); renderizarGrade();
+  toast('Revisões recalculadas!', 'success');
+}
+
+function renderizarHistoricoRevisoesInteligentes() {
+  const container = document.getElementById('historicoRevisoesInteligentes');
+  if (!container) return;
+
+  let lista = [];
+  for (const nome in historicoRevisoesInteligentes) {
+    historicoRevisoesInteligentes[nome].forEach((item, index) => {
+      lista.push({
+        materia:       nome,
+        indexOriginal: index,
+        dataOriginal:  new Date(item.dataOriginal),
+        dataConclusao: new Date(item.dataConclusao)
+      });
+    });
+  }
+
+  if (filtroMateriaHistorico !== 'todas') {
+    lista = lista.filter(i => i.materia === filtroMateriaHistorico);
+  }
+  lista.sort((a, b) => b.dataConclusao - a.dataConclusao);
+
+  if (!lista.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">Nenhuma revisão concluída ainda.</div></div>';
+    atualizarOpcoesFiltroHistorico(); return;
+  }
+
+  const limite = historicoExpandido ? lista.length : 5;
+  container.innerHTML = `<div style="margin-bottom:9px;color:var(--muted);font-size:12.5px;">Mostrando ${Math.min(limite, lista.length)} de ${lista.length}</div>`;
+
+  container.innerHTML += lista.slice(0, limite).map(item => `
+    <div class="hist-card">
+      <div class="hist-name">${item.materia}</div>
+      <div class="hist-dates">
+        📅 Prevista: ${item.dataOriginal.toLocaleDateString('pt-BR')}<br>
+        ✅ Concluída: ${item.dataConclusao.toLocaleDateString('pt-BR')}
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:9px;" onclick="desconcluirRevisaoHistorico('${item.materia}', ${item.indexOriginal})">↩ Desfazer</button>
+    </div>
+  `).join('');
+
+  if (lista.length > 5) {
+    container.innerHTML += `
+      <div style="text-align:center;margin-top:10px;">
+        <button class="btn btn-secondary" onclick="toggleHistorico()">
+          ${historicoExpandido ? '▲ Ver menos' : '▼ Ver mais'}
+        </button>
+      </div>`;
+  }
+
+  atualizarOpcoesFiltroHistorico();
+}
+
+function desconcluirRevisaoHistorico(nome, index) {
+  const item = historicoRevisoesInteligentes[nome]?.[index];
+  if (!item) return;
+
+  const existeNaAgenda = agendaRevisoes.find(ev =>
+    ev.materia === nome && ev.tipo === 'Revisão' && ev.data === item.dataOriginal
+  );
+  if (existeNaAgenda) {
+    existeNaAgenda.concluido = false;
+  } else {
+    const pct        = (() => { const d = materias[nome]; if (!d) return 50; const t = d.totalAcertos + d.totalErros; return t > 0 ? (d.totalAcertos/t)*100 : 50; })();
+    const prioridade = calcularPrioridade(pct);
+    agendaRevisoes.push({ id: crypto.randomUUID(), data: item.dataOriginal, tipo: 'Revisão', materia: nome, duracao: 30, prioridade, concluido: false, reagendamentos: 0 });
+  }
+
+  historicoRevisoesInteligentes[nome].splice(index, 1);
+  if (historicoRevisoesInteligentes[nome].length === 0) delete historicoRevisoesInteligentes[nome];
+
+  salvarDados(); renderizarProximasRevisoes(); renderizarHistoricoRevisoesInteligentes(); renderizarGrade();
+  toast('Revisão restaurada.', 'info');
+}
+
+function atualizarOpcoesFiltroHistorico() {
+  const select = document.getElementById('filtroMateriaHistorico');
+  if (!select) return;
+  const nomes = Object.keys(historicoRevisoesInteligentes);
+  select.innerHTML = `<option value="todas">Todas as matérias</option>`;
+  nomes.forEach(nome => { select.innerHTML += `<option value="${nome}">${nome}</option>`; });
+  select.value = filtroMateriaHistorico;
+}
+
+function atualizarFiltroHistorico() {
+  filtroMateriaHistorico = document.getElementById('filtroMateriaHistorico').value;
+  historicoExpandido = false;
+  renderizarHistoricoRevisoesInteligentes();
+}
+
+function toggleHistorico() {
+  historicoExpandido = !historicoExpandido;
+  renderizarHistoricoRevisoesInteligentes();
+}
+
+function _agendaGroupByDay(lista) {
+  const map = {};
+  (lista || agendaRevisoes).forEach(ev => {
+    const key = new Date(ev.data).toISOString().split('T')[0];
+    if (!map[key]) map[key] = { carga: 0, eventos: [], materias: new Set() };
+    map[key].eventos.push(ev);
+    map[key].carga += ev.duracao;
+    map[key].materias.add(ev.materia);
+  });
+  return map;
+}
+
+function _atualizarStatsAgenda() {
+  const statsEl = document.getElementById('agendaStatsTop');
+  if (!statsEl) return;
+  if (!agendaRevisoes.length) { statsEl.style.display = 'none'; return; }
+  const total   = agendaRevisoes.length;
+  const concl   = agendaRevisoes.filter(e => e.concluido).length;
+  const dias    = new Set(agendaRevisoes.map(ev => new Date(ev.data).toISOString().split('T')[0])).size;
+  const pct     = total > 0 ? Math.round((concl / total) * 100) : 0;
+  const cor     = pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--accent)';
+  statsEl.style.display = 'grid';
+  statsEl.querySelector('#astDias').textContent       = dias;
+  statsEl.querySelector('#astEventos').textContent    = total;
+  statsEl.querySelector('#astConcluidos').textContent = concl;
+  const pctEl  = statsEl.querySelector('#astPct');
+  const fillEl = statsEl.querySelector('#astMiniFill');
+  if (pctEl)  { pctEl.textContent = pct + '%'; pctEl.style.color = cor; }
+  if (fillEl) { fillEl.style.width = pct + '%'; fillEl.style.background = cor; }
+}
+
+function calcularCargaSemanal() {
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const dom  = new Date(hoje); dom.setDate(hoje.getDate() - hoje.getDay());
+  const sab  = new Date(dom);  sab.setDate(dom.getDate() + 6); sab.setHours(23,59,59,999);
+  return agendaRevisoes.filter(ev => { const d = new Date(ev.data); return d >= dom && d <= sab; }).reduce((s, ev) => s + ev.duracao, 0);
+}
+
+function atualizarFiltroMateriaAgenda() {
+  const sel = document.getElementById('agendaFiltroMateriaSelect');
+  if (!sel) return;
+  const nomes = [...new Set(agendaRevisoes.map(ev => ev.materia))].sort();
+  const atual = sel.value;
+  sel.innerHTML = '<option value="todas">Todas as matérias</option>';
+  nomes.forEach(n => { sel.innerHTML += `<option value="${n}">${n}</option>`; });
+  sel.value = nomes.includes(atual) ? atual : 'todas';
+}
+
+function onFiltroMateriaAgendaChange() {
+  agendaFiltroMateria = document.getElementById('agendaFiltroMateriaSelect').value;
+  renderizarGrade();
+}
+
+function reagendarEvento(id, dias) {
+  const ev = agendaRevisoes.find(e => e.id === id);
+  if (!ev) return;
+  const d = new Date(ev.data); d.setDate(d.getDate() + dias);
+  ev.data = d.toISOString();
+  ev.reagendamentos = (ev.reagendamentos || 0) + 1;
+  salvarDados(); renderizarGrade();
+  toast(`Evento reagendado para ${d.toLocaleDateString('pt-BR')} 📅`, 'info');
+}
+
+function excluirEvento(id) {
+  const ev = agendaRevisoes.find(e => e.id === id);
+  if (!ev) return;
+  if (!confirm(`Excluir evento de "${ev.materia}" (${ev.tipo})?`)) return;
+  agendaRevisoes = agendaRevisoes.filter(e => e.id !== id);
+  salvarDados(); renderizarGrade(); renderizarProximasRevisoes();
+  toast('Evento excluído.', 'info');
+}
+
+function reagendarAtrasados() {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const hojeStr = hoje.toISOString().split('T')[0];
+  const atrasados = agendaRevisoes.filter(ev => !ev.concluido && new Date(ev.data).toISOString().split('T')[0] < hojeStr);
+  if (!atrasados.length) { toast('Nenhum evento atrasado!', 'info'); return; }
+  if (!confirm(`Mover ${atrasados.length} evento(s) atrasado(s) para hoje?`)) return;
+  atrasados.forEach(ev => { ev.data = hoje.toISOString(); ev.reagendamentos = (ev.reagendamentos || 0) + 1; });
+  salvarDados(); renderizarGrade();
+  toast(`${atrasados.length} evento(s) movido(s) para hoje ✅`, 'success');
+}
+
+function marcarDiaInteiro(dataStr) {
+  const eventos = agendaRevisoes.filter(ev => new Date(ev.data).toISOString().split('T')[0] === dataStr);
+  if (!eventos.length) return;
+  const todosConcluidos = eventos.every(e => e.concluido);
+  eventos.forEach(e => { e.concluido = !todosConcluidos; });
+  const materiasDia = [...new Set(eventos.map(e => e.materia))];
+  if (!todosConcluidos) {
+    materiasDia.forEach(nome => {
+      if (eventosAtivosDeMateria(nome).length === 0) gerarEventosMateria(nome);
+    });
+  }
+  salvarDados(); renderizarGrade(); renderizarProximasRevisoes();
+  toast(todosConcluidos ? 'Dia desmarcado.' : 'Dia inteiro concluído! 🎉', todosConcluidos ? 'info' : 'success');
+}
+
+function abrirModalEventoManual(dataPreenchida) {
+  document.getElementById('modalEventoManual')?.remove();
+  const nomes = Object.keys(materias);
+  if (!nomes.length) { toast('Registre ao menos uma matéria primeiro.', 'warning'); return; }
+  const hojeStr = new Date().toISOString().split('T')[0];
+  const dataVal = dataPreenchida || hojeStr;
+  const modal   = document.createElement('div');
+  modal.id        = 'modalEventoManual';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">➕ Adicionar Evento</span>
+        <button class="modal-close" onclick="fecharModalEventoManual()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <label>Matéria</label>
+          <select id="mevMateria">${nomes.map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+        </div>
+        <div class="modal-field">
+          <label>Tipo</label>
+          <div class="modal-radio-group">
+            <label class="modal-radio"><input type="radio" name="mevTipo" value="Estudo" checked> 📖 Estudo</label>
+            <label class="modal-radio"><input type="radio" name="mevTipo" value="Revisão"> 🔁 Revisão</label>
+          </div>
+        </div>
+        <div class="modal-field">
+          <label>Data</label>
+          <input type="date" id="mevData" value="${dataVal}" min="${hojeStr}">
+        </div>
+        <div class="modal-field">
+          <label>Duração (min)</label>
+          <input type="number" id="mevDuracao" value="40" min="5" max="300" step="5">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="fecharModalEventoManual()">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmarEventoManual()">✔ Adicionar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('modal-open'));
+}
+
+function fecharModalEventoManual() {
+  const m = document.getElementById('modalEventoManual');
+  if (!m) return;
+  m.classList.remove('modal-open');
+  setTimeout(() => m.remove(), 220);
+}
+
+function confirmarEventoManual() {
+  const nome    = document.getElementById('mevMateria').value;
+  const tipo    = document.querySelector('input[name="mevTipo"]:checked').value;
+  const data    = document.getElementById('mevData').value;
+  const duracao = parseInt(document.getElementById('mevDuracao').value) || 40;
+  if (!data) { toast('Escolha uma data.', 'warning'); return; }
+  const dataStr    = new Date(data + 'T12:00:00').toISOString().split('T')[0];
+  const qtdMatDia  = contarMateriasNoDia(dataStr);
+  const jaTemEsta  = agendaRevisoes.some(ev => new Date(ev.data).toISOString().split('T')[0] === dataStr && ev.materia === nome);
+  if (!jaTemEsta && qtdMatDia >= MAX_MATERIAS_POR_DIA) {
+    if (!confirm(`Este dia já tem ${MAX_MATERIAS_POR_DIA} matérias (limite). Adicionar mesmo assim?`)) return;
+  }
+  const pct        = (() => { const d = materias[nome]; if (!d) return 50; const t = d.totalAcertos + d.totalErros; return t > 0 ? (d.totalAcertos/t)*100 : 50; })();
+  const prioridade = calcularPrioridade(pct);
+  agendaRevisoes.push({ id: crypto.randomUUID(), data: new Date(data + 'T12:00:00').toISOString(), tipo, materia: nome, duracao, prioridade, concluido: false, reagendamentos: 0 });
+  salvarDados(); renderizarGrade(); renderizarProximasRevisoes(); fecharModalEventoManual();
+  toast(`${tipo} de "${nome}" adicionado! ✅`, 'success');
+}
+
+function toggleEvMenu(id) {
+  const menu = document.getElementById('evMenu_' + id);
+  if (!menu) return;
+  const aberto = menu.classList.contains('open');
+  closeEvMenus();
+  if (!aberto) menu.classList.add('open');
+}
+
+function closeEvMenus() {
+  document.querySelectorAll('.ev-dropdown.open').forEach(m => m.classList.remove('open'));
+}
+
+document.addEventListener('click', e => { if (!e.target.closest('.ev-menu-wrap')) closeEvMenus(); });
+
+function _eventoCard(ev) {
+  const isEstudo  = ev.tipo === 'Estudo';
+  const prioIcon  = ev.prioridade === 'alta' ? '🔴' : ev.prioridade === 'media' ? '🟡' : '🟢';
+  const prioClass = 'prio-' + ev.prioridade;
+  const reagBadge = ev.reagendamentos > 0 ? `<span class="ev-reag-badge" title="${ev.reagendamentos}x reagendado">↺${ev.reagendamentos}</span>` : '';
+  return `
+    <div class="agenda-evento ${isEstudo ? 'ev-estudo' : 'ev-revisao'} ${ev.concluido ? 'ev-feito' : ''} ${prioClass}">
+      <div class="ev-left">
+        <div class="ev-tipo-badge ${isEstudo ? 'badge-estudo' : 'badge-revisao'}">${isEstudo ? '📖 Estudo' : '🔁 Revisão'}</div>
+        <div class="ev-materia">${ev.materia}${reagBadge}</div>
+      </div>
+      <div class="ev-right">
+        <span class="ev-prio" title="Prioridade ${ev.prioridade}">${prioIcon}</span>
+        <span class="ev-dur">⏱ ${ev.duracao}min</span>
+        <button class="ev-btn ${ev.concluido ? 'ev-btn-done' : 'ev-btn-pending'}" onclick="marcarConcluido('${ev.id}')">
+          ${ev.concluido ? '✔ Feito' : 'Marcar'}
+        </button>
+        <div class="ev-menu-wrap">
+          <button class="ev-menu-btn" onclick="toggleEvMenu('${ev.id}')">⋮</button>
+          <div class="ev-dropdown" id="evMenu_${ev.id}">
+            <button onclick="reagendarEvento('${ev.id}', 1); closeEvMenus()">📅 +1 dia</button>
+            <button onclick="reagendarEvento('${ev.id}', 3); closeEvMenus()">📅 +3 dias</button>
+            <button onclick="reagendarEvento('${ev.id}', 7); closeEvMenus()">📅 +1 semana</button>
+            <button class="ev-dd-danger" onclick="excluirEvento('${ev.id}')">🗑 Excluir</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function _eventoCardCompact(ev) {
+  const isEstudo = ev.tipo === 'Estudo';
+  return `
+    <div class="ev-pill ${isEstudo ? 'ev-pill-estudo' : 'ev-pill-revisao'} ${ev.concluido ? 'ev-pill-done' : ''}"
+         title="${ev.materia} — ${ev.tipo} (${ev.duracao}min)"
+         onclick="marcarConcluido('${ev.id}')">
+      <span class="evp-dot ${isEstudo ? 'dot-estudo' : 'dot-revisao'}"></span>
+      <span class="evp-nome">${ev.materia}</span>
+      ${ev.concluido ? '<span class="evp-check">✔</span>' : ''}
+    </div>`;
+}
+
+function trocarVisualizacaoAgenda(view) {
+  agendaView = view;
+  closeEvMenus();
+  document.getElementById('btnViewLista').classList.toggle('active',  view === 'lista');
+  document.getElementById('btnViewSemana').classList.toggle('active', view === 'semana');
+  const nav = document.getElementById('semanaNav');
+  if (nav) nav.style.display = view === 'semana' ? 'flex' : 'none';
+  if (view === 'semana') agendaSemanaOffset = 0;
+  renderizarGrade();
+}
+
+function navegarSemana(delta) {
+  agendaSemanaOffset += delta;
+  renderizarGrade();
+}
+
 function renderizarGrade() {
-  const grade = document.getElementById("grade");
+  _atualizarStatsAgenda();
+  agendaView === 'semana' ? renderizarGradeSemana() : renderizarGradeLista();
+}
+
+function renderizarGradeLista() {
+  const grade = document.getElementById('grade');
   if (!grade) return;
 
   if (!agendaRevisoes.length) {
@@ -890,84 +1178,183 @@ function renderizarGrade() {
     return;
   }
 
-  const agenda = {};
-  agendaRevisoes.forEach(ev => {
-    const key = new Date(ev.data).toISOString().split("T")[0];
-    if (!agenda[key]) agenda[key] = { carga: 0, eventos: [] };
-    agenda[key].eventos.push(ev);
-    agenda[key].carga += ev.duracao;
-  });
+  const filtrados = agendaFiltroMateria === 'todas'
+    ? agendaRevisoes
+    : agendaRevisoes.filter(ev => ev.materia === agendaFiltroMateria);
 
-  grade.innerHTML = Object.keys(agenda).sort().map(data => {
-    const dataFormatada = new Date(data + 'T12:00:00').toLocaleDateString("pt-BR", {
-      weekday: 'long', day: '2-digit', month: 'long'
-    });
-    const eventos = agenda[data].eventos.map(ev => `
-      <div class="evento evento-${ev.tipo === 'Estudo' ? 'estudo' : 'revisao'} ${ev.concluido ? 'feito' : ''}">
-        <span style="font-weight:600;">${ev.tipo}</span>
-        <span>${ev.materia}</span>
-        <span>${ev.duracao} min</span>
-        <button class="btn btn-sm ${ev.concluido ? 'btn-secondary' : 'btn-primary'}" onclick="marcarConcluido('${ev.id}')">
-          ${ev.concluido ? '✔ Feito' : 'Marcar'}
-        </button>
+  const agrupado = _agendaGroupByDay(filtrados);
+  const hoje     = new Date().toISOString().split('T')[0];
+  const dias     = Object.keys(agrupado).sort();
+
+  const cargaSem  = calcularCargaSemanal();
+  const atrasados = agendaRevisoes.filter(ev => !ev.concluido && new Date(ev.data).toISOString().split('T')[0] < hoje).length;
+
+  let html = `
+    <div class="agenda-barra-filtro">
+      <div class="abf-left">
+        <select id="agendaFiltroMateriaSelect" class="abf-select" onchange="onFiltroMateriaAgendaChange()">
+          <option value="todas">Todas as matérias</option>
+        </select>
+        ${atrasados > 0 ? `<span class="abf-atrasados">${atrasados} atrasado${atrasados > 1 ? 's' : ''}</span>` : ''}
       </div>
-    `).join('');
+      <div class="abf-right">
+        ${atrasados > 0 ? `<button class="btn btn-secondary btn-sm" onclick="reagendarAtrasados()">⚡ Reagendar atrasados</button>` : ''}
+        <button class="btn btn-primary btn-sm" onclick="abrirModalEventoManual()">➕ Evento</button>
+      </div>
+    </div>
+    <div class="agenda-carga-semana">
+      📆 Carga desta semana: <strong>${cargaSem} min</strong>
+      ${cargaSem >= 300 ? ' · 🔥 Semana intensa!' : cargaSem >= 120 ? ' · 👍 Bom ritmo!' : cargaSem > 0 ? ' · 💡 Leve por enquanto.' : ''}
+    </div>`;
+
+  if (!dias.length) {
+    html += `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">Nenhum evento para este filtro.</div></div>`;
+    grade.innerHTML = html;
+    atualizarFiltroMateriaAgenda();
+    return;
+  }
+
+  html += dias.map(data => {
+    const info      = agrupado[data];
+    const eventos   = info.eventos;
+    const matSize   = info.materias.size;
+    const isHoje    = data === hoje;
+    const isPast    = data < hoje;
+    const dataObj   = new Date(data + 'T12:00:00');
+    const concl     = eventos.filter(e => e.concluido).length;
+    const pctDia    = eventos.length > 0 ? Math.round((concl / eventos.length) * 100) : 0;
+    const diaOk     = concl === eventos.length;
+    const dataFmt   = dataObj.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+    const loadClass = matSize >= MAX_MATERIAS_POR_DIA ? 'load-full' : matSize >= 3 ? 'load-high' : matSize >= 2 ? 'load-med' : 'load-low';
+    const loadLabel = matSize >= MAX_MATERIAS_POR_DIA ? '🔴 Cheio' : matSize >= 3 ? '🟡 Ocupado' : matSize >= 2 ? '🟡 Moderado' : '🟢 Leve';
+    const fillClass = diaOk ? 'fill-green' : pctDia > 0 ? 'fill-yellow' : 'fill-muted';
+    const evHtml    = eventos
+      .sort((a, b) => ({ alta:0, media:1, baixa:2 }[a.prioridade] || 0) - ({ alta:0, media:1, baixa:2 }[b.prioridade] || 0))
+      .map(ev => _eventoCard(ev)).join('');
+    const btnDia  = diaOk
+      ? `<button class="dia-action-btn dia-action-desfazer" onclick="marcarDiaInteiro('${data}')">↩ Desmarcar tudo</button>`
+      : `<button class="dia-action-btn dia-action-marcar"   onclick="marcarDiaInteiro('${data}')">✔ Marcar tudo</button>`;
 
     return `
-      <div class="dia-card">
-        <div class="dia-header">${dataFormatada}</div>
-        ${eventos}
-        <div class="carga-total">⏱ Carga: ${agenda[data].carga} min</div>
-      </div>
-    `;
+      <div class="dia-card-new ${isHoje ? 'dia-hoje' : ''} ${diaOk ? 'dia-completo' : ''} ${isPast && !diaOk ? 'dia-passado' : ''}">
+        <div class="dia-header-new">
+          <div class="dia-header-left">
+            ${isHoje ? '<span class="dia-hoje-badge">HOJE</span>' : ''}
+            ${isPast && !diaOk ? '<span class="dia-atrasado-badge">ATRASADO</span>' : ''}
+            <span class="dia-nome">${dataFmt}</span>
+          </div>
+          <div class="dia-header-right">
+            <span class="dia-load-badge ${loadClass}">${loadLabel}</span>
+            <span class="dia-count">${matSize}/${MAX_MATERIAS_POR_DIA} mat.</span>
+          </div>
+        </div>
+        <div class="dia-prog-row">
+          <div class="dia-prog-track"><div class="dia-prog-fill ${fillClass}" style="width:${pctDia}%"></div></div>
+          <span class="dia-prog-pct">${pctDia}%</span>
+        </div>
+        <div class="dia-eventos">${evHtml}</div>
+        <div class="dia-footer">
+          <span>⏱ ${info.carga} min</span>
+          <div class="dia-footer-actions">
+            ${btnDia}
+            <button class="dia-action-btn dia-action-add" onclick="abrirModalEventoManual('${data}')" title="Adicionar evento neste dia">＋</button>
+          </div>
+        </div>
+      </div>`;
   }).join('');
+
+  grade.innerHTML = html;
+  atualizarFiltroMateriaAgenda();
+}
+
+function renderizarGradeSemana() {
+  const grade = document.getElementById('grade');
+  if (!grade) return;
+
+  const hoje    = new Date(); hoje.setHours(0,0,0,0);
+  const hojeStr = hoje.toISOString().split('T')[0];
+  const dom     = new Date(hoje); dom.setDate(hoje.getDate() - hoje.getDay());
+  dom.setDate(dom.getDate() + agendaSemanaOffset * 7);
+
+  const semana  = Array.from({ length: 7 }, (_, i) => { const d = new Date(dom); d.setDate(dom.getDate() + i); return d; });
+  const agrupado = _agendaGroupByDay();
+  const diasNomes = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+  const fmtR  = d => d.toLocaleDateString('pt-BR', { day:'2-digit', month:'short' });
+  const label = `${fmtR(semana[1])} – ${fmtR(semana[6])}, ${semana[1].getFullYear()}`;
+  const labelEl = document.getElementById('semanaNavLabel');
+  if (labelEl) labelEl.textContent = label;
+
+  const temEventos = semana.some(d => (agrupado[d.toISOString().split('T')[0]]?.eventos.length || 0) > 0);
+
+  const cols = semana.map((dObj, idx) => {
+    const dStr    = dObj.toISOString().split('T')[0];
+    const info    = agrupado[dStr];
+    const isHoje  = dStr === hojeStr;
+    const isPast  = dStr < hojeStr;
+    const isFds   = idx === 0 || idx === 6;
+    const eventos = info?.eventos || [];
+    const concl   = eventos.filter(e => e.concluido).length;
+    const diaOk   = eventos.length > 0 && concl === eventos.length;
+    const pills   = eventos
+      .sort((a, b) => ({ alta:0, media:1, baixa:2 }[a.prioridade] || 0) - ({ alta:0, media:1, baixa:2 }[b.prioridade] || 0))
+      .map(ev => _eventoCardCompact(ev)).join('');
+
+    return `
+      <div class="sem-col ${isHoje ? 'sem-hoje' : ''} ${isPast ? 'sem-passado' : ''} ${diaOk ? 'sem-completo' : ''} ${isFds ? 'sem-fds' : ''}">
+        <div class="sem-col-header">
+          <span class="sem-dia-nome">${diasNomes[idx]}</span>
+          <span class="sem-dia-num ${isHoje ? 'num-hoje' : ''}">${dObj.getDate()}</span>
+          ${isHoje ? '<span class="sem-hoje-dot"></span>' : ''}
+        </div>
+        <div class="sem-col-body">
+          ${pills || `<div class="sem-vazio">${isPast ? '—' : ''}</div>`}
+        </div>
+        ${info?.carga ? `<div class="sem-col-footer">⏱ ${info.carga}min</div>` : ''}
+      </div>`;
+  }).join('');
+
+  grade.innerHTML = `
+    <div class="semana-grid">${cols}</div>
+    ${!temEventos ? `<div class="sem-empty-week"><span>📭</span> Nenhum evento nesta semana.<br><small>Navegue ou gere a agenda.</small></div>` : ''}
+    <div class="sem-legenda">
+      <span class="sem-leg-item"><span class="evp-dot dot-estudo"></span> Estudo</span>
+      <span class="sem-leg-item"><span class="evp-dot dot-revisao"></span> Revisão</span>
+      <span class="sem-leg-item">🔴 Alta · 🟡 Média · 🟢 Baixa</span>
+      <span class="sem-leg-item sem-leg-done"><span class="evp-check">✔</span> Feito</span>
+    </div>`;
 }
 
 function marcarConcluido(id) {
   const ev = agendaRevisoes.find(e => e.id === id);
   if (!ev) return;
   ev.concluido = !ev.concluido;
-  salvarDados(); renderizarGrade();
-}
 
-function gerarRevisoesExtrasPorVolume(nome) {
-  const limiteFinal = new Date(); limiteFinal.setMonth(limiteFinal.getMonth() + 3);
-  const dados = materias[nome];
-  const total = dados.totalAcertos + dados.totalErros;
-  if (total === 0) return;
-
-  const pct               = (dados.totalAcertos / total) * 100;
-  const prioridade        = calcularPrioridade(pct);
-  const revisoesDesejadas = Math.floor(total / QUESTOES_POR_REVISAO);
-  const jaGeradas         = revisoesGeradasPorMateria[nome] || 0;
-  const faltam            = revisoesDesejadas - jaGeradas;
-  if (faltam <= 0) return;
-
-  const saltos = { alta: 5, media: 10, baixa: 15 };
-  const salto  = saltos[prioridade];
-  const hoje   = new Date();
-
-  for (let k = 0; k < faltam; k++) {
-    const revs = agendaRevisoes
-      .filter(ev => ev.tipo === "Revisão" && ev.materia === nome)
-      .map(ev => new Date(ev.data)).sort((a, b) => a - b);
-
-    let base      = revs.length ? revs[revs.length - 1] : hoje;
-    let tentativa = new Date(base);
-    let criada    = false;
-
-    for (let t = 0; t < 30; t++) {
-      tentativa = new Date(tentativa);
-      tentativa.setDate(tentativa.getDate() + salto);
-      if (tentativa > limiteFinal) break;
-      if (criarRevisaoSeNaoExiste(nome, prioridade, tentativa)) { criada = true; break; }
-      tentativa.setDate(tentativa.getDate() + 1);
+  if (ev.tipo === 'Revisão') {
+    if (ev.concluido) {
+      if (!historicoRevisoesInteligentes[ev.materia]) historicoRevisoesInteligentes[ev.materia] = [];
+      const jaNoHist = historicoRevisoesInteligentes[ev.materia].some(h => h.dataOriginal === ev.data);
+      if (!jaNoHist) {
+        historicoRevisoesInteligentes[ev.materia].push({ dataOriginal: ev.data, dataConclusao: new Date().toISOString() });
+      }
+    } else {
+      const hist = historicoRevisoesInteligentes[ev.materia];
+      if (hist) {
+        const idx = hist.findIndex(h => h.dataOriginal === ev.data);
+        if (idx >= 0) hist.splice(idx, 1);
+        if (hist.length === 0) delete historicoRevisoesInteligentes[ev.materia];
+      }
     }
-
-    if (criada) revisoesGeradasPorMateria[nome] = (revisoesGeradasPorMateria[nome] || 0) + 1;
-    else break;
   }
+
+  if (ev.concluido && eventosAtivosDeMateria(ev.materia).length === 0) {
+    gerarEventosMateria(ev.materia);
+    toast(`Ciclo de "${ev.materia}" concluído! Próximo ciclo gerado 🎯`, 'success');
+  }
+
+  salvarDados(); renderizarGrade(); renderizarProximasRevisoes();
 }
+
 
 const POMO = { focoMin: 40, pausaCurtaMin: 5, pausaLongaMin: 15, ciclosParaPausaLonga: 4 };
 
@@ -1220,9 +1607,8 @@ function atualizarDashboard() {
 function salvarDados() {
   localStorage.setItem("planner_dados_v3", JSON.stringify({
     materias, metasPorMateria, historicoMetas, progressoSemanal,
-    agendaRevisoes, revisoesGeradasPorMateria, revisoesInteligentes,
-    historicoRevisoesInteligentes, materiasConcluidas, semanaUltimaVista,
-    streakDias, ultimoDiaEstudo, pomoSessoes
+    agendaRevisoes, historicoRevisoesInteligentes, materiasConcluidas,
+    semanaUltimaVista, streakDias, ultimoDiaEstudo, pomoSessoes
   }));
 }
 
@@ -1240,28 +1626,38 @@ function carregarDados() {
   materiasConcluidas            = p.materiasConcluidas            || {};
   progressoSemanal              = p.progressoSemanal              || {};
   agendaRevisoes                = p.agendaRevisoes                || [];
-  revisoesGeradasPorMateria     = p.revisoesGeradasPorMateria     || {};
   streakDias                    = p.streakDias                    || 0;
   ultimoDiaEstudo               = p.ultimoDiaEstudo               || null;
   pomoSessoes                   = p.pomoSessoes                   || [];
-  revisoesInteligentes = {};
-
-  const revisoesRaw = p.revisoesInteligentes || {};
-  for (let nome in revisoesRaw) {
-    revisoesInteligentes[nome] = revisoesRaw[nome].map(item =>
-      typeof item === "string"
-        ? { data: item, concluida: false }
-        : { data: item.data, concluida: item.concluida || false }
-    );
-  }
-
-  semanaUltimaVista = p.semanaUltimaVista ?? obterSemanaAtual();
+  semanaUltimaVista             = p.semanaUltimaVista ?? obterSemanaAtual();
 
   for (let nome in materias) {
     if (metasPorMateria[nome] === undefined) metasPorMateria[nome] = metaAutomatica(nome);
   }
 
+  migrarAgendaRevisoes();
+
   limparMetasOrfas();
+}
+
+function migrarAgendaRevisoes() {
+  const materiasList = [...new Set(agendaRevisoes.map(ev => ev.materia))];
+
+  materiasList.forEach(nome => {
+    const ativos    = agendaRevisoes.filter(ev => ev.materia === nome && !ev.concluido);
+    const estudos   = ativos.filter(ev => ev.tipo === 'Estudo')
+                            .sort((a, b) => new Date(a.data) - new Date(b.data));
+    const revisoes  = ativos.filter(ev => ev.tipo === 'Revisão')
+                            .sort((a, b) => new Date(a.data) - new Date(b.data));
+
+    const estudosExcesso = estudos.slice(1).map(e => e.id);
+    const revisoesExcesso = revisoes.slice(2).map(e => e.id);
+
+    const remover = new Set([...estudosExcesso, ...revisoesExcesso]);
+    if (remover.size > 0) {
+      agendaRevisoes = agendaRevisoes.filter(ev => !remover.has(ev.id));
+    }
+  });
 }
 
 function resetarSistema() {
@@ -1331,7 +1727,6 @@ function alternarTemaConfig() {
 if (toggleBtn) toggleBtn.addEventListener("click", alternarTema);
 
 document.addEventListener('keydown', (e) => {
-  // Enter no campo de erros registra o bloco
   if (e.key === 'Enter' && document.activeElement.id === 'erros') {
     registrarBloco();
   }
@@ -1347,7 +1742,7 @@ document.addEventListener("DOMContentLoaded", () => {
   carregarDados();
   aplicarTemaSalvo();
   detectarTrocaDeSemanaEFechar();
-  gerarRevisoesInteligentesAutomaticamente();
+  gerarEventosTodasMaterias();
 
   atualizarDesempenho();
   atualizarStatsSummary();
