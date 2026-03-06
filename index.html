@@ -154,12 +154,35 @@
   </div>
 
   <div id="panel-agenda" class="panel">
-    <div class="card">
-      <div class="card-title"><div class="card-title-icon icon-purple">📅</div>Agenda de Estudo</div>
-      <div class="btn-group">
-        <button class="btn btn-primary" onclick="criarAgendaInteligente()">🗓 Gerar Agenda</button>
-        <button class="btn btn-secondary" onclick="limparAgendaConcluida()">🧹 Limpar Concluídos</button>
+
+    <div class="agenda-stats-top" id="agendaStatsTop" style="display:none">
+      <div class="ast-item"><span class="ast-val" id="astDias">0</span><span class="ast-lbl">Dias planejados</span></div>
+      <div class="ast-item"><span class="ast-val" id="astEventos">0</span><span class="ast-lbl">Total de eventos</span></div>
+      <div class="ast-item"><span class="ast-val" id="astConcluidos">0</span><span class="ast-lbl">Concluídos</span></div>
+      <div class="ast-item ast-item-prog">
+        <div class="ast-prog-top"><span class="ast-val" id="astPct">0%</span><span class="ast-lbl">Progresso geral</span></div>
+        <div class="ast-mini-bar"><div class="ast-mini-fill" id="astMiniFill"></div></div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="agenda-toolbar">
+        <div class="agenda-view-toggle" id="agendaViewToggle">
+          <button class="avt-btn active" id="btnViewLista" onclick="trocarVisualizacaoAgenda('lista')">☰ Lista</button>
+          <button class="avt-btn" id="btnViewSemana" onclick="trocarVisualizacaoAgenda('semana')">📆 Semana</button>
+        </div>
+        <div class="agenda-toolbar-right">
+          <button class="btn btn-primary btn-sm" onclick="criarAgendaInteligente()">🗓 Gerar Agenda</button>
+          <button class="btn btn-secondary btn-sm" onclick="limparAgendaConcluida()">🧹 Limpar Feitos</button>
+        </div>
+      </div>
+
+      <div class="semana-nav" id="semanaNav" style="display:none">
+        <button class="snav-btn" onclick="navegarSemana(-1)">‹ Anterior</button>
+        <span class="snav-label" id="semanaNavLabel">—</span>
+        <button class="snav-btn" onclick="navegarSemana(1)">Próxima ›</button>
+      </div>
+
       <div id="grade">
         <div class="empty"><div class="empty-icon">📅</div><div class="empty-text">Gere a agenda para ver os eventos.</div></div>
       </div>
@@ -255,4 +278,3 @@
 <script src="script.js"></script>
 </body>
 </html>
-
